@@ -55,6 +55,7 @@ macOS에서도 기본 Claude 계정은 조회할 수 있습니다. 다만 **Clau
 
 ## 라이선스
 
-QuotaTank의 현재 라이선스는 [MIT](LICENSE)입니다. 소스 저장소의 비공개 전환은 기존 라이선스 권한을 취소하지 않습니다.
+QuotaTank의 소스코드는 공개하지 않으며 오픈소스 프로젝트가 아닙니다. 설치파일은 무료로 받아 사용할 수 있습니다.
+이전에 MIT 라이선스로 배포한 버전에는 그 라이선스([LICENSE](LICENSE))가 그대로 적용됩니다.
 Pretendard 글꼴은 [SIL OFL 1.1](Pretendard-LICENSE.txt)입니다.
 동봉된 외부 구성요소에는 각 구성요소의 라이선스가 적용됩니다.
