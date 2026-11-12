@@ -1,0 +1,205 @@
+# 태그(v*)를 빌드해 이 저장소에 초안 릴리스를 만든다(DISTRIBUTION.md). 태그는 widget.py 의 VERSION 과 같아야 한다.
+# 수동 실행(workflow_dispatch)과 PR 은 빌드 결과를 Actions 아티팩트로만 남긴다.
+#
+# 서명(SIGNING.md): 저장소 변수 AZURE_SIGNING_ENDPOINT 가 있을 때만 태그 빌드에서 sign 작업이 돈다.
+# 서명 작업은 저장소 코드를 실행하지 않고, 승인 규칙을 걸 수 있는 release 환경에서만 Azure 자격을 받는다.
+# 서명을 설정하지 않으면 exe 는 서명 없이 올라가고, 설치가 안 되는 서명 없는 MSIX 는 릴리스에 넣지 않는다.
+name: release
+
+on:
+  pull_request:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            out: dist/QuotaTank-windows.exe
+          - os: macos-latest  # Apple Silicon
+            out: dist/QuotaTank-mac-arm64.zip
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: 태그와 widget.py VERSION 이 같은지 확인
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          python -c "import ast,os,sys; v=[n.value.value for n in ast.parse(open('widget.py',encoding='utf-8').read()).body if isinstance(n,ast.Assign) and getattr(n.targets[0],'id','')=='VERSION'][0]; sys.exit(0 if 'v'+v==os.environ['TAG'] else 'VERSION '+v+' != '+os.environ['TAG'])"
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit==2.10.1
+      - name: Windows hashed dependencies
+        if: runner.os == 'Windows'
+        run: |
+          pip install --require-hashes -r requirements-bootstrap.lock
+          pip install --require-hashes --no-build-isolation -r requirements-windows.lock
+          python -m pip_audit -r requirements-windows.lock --no-deps --disable-pip
+      - name: macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          pip install -r requirements-build.txt
+          python -m pip_audit -r requirements-build.txt
+      - run: python -m unittest discover -s tests
+      # WKWebView 는 CSP 를 pywebview 의 반환값 eval 에도 건다. 실제 창으로 api 호출이 돌아오는지 본다(가짜 데이터)
+      - name: WebView smoke (맥)
+        if: runner.os == 'macOS'
+        timeout-minutes: 3
+        run: |
+          python tools/smoke_webview.py main.html
+          python tools/smoke_webview.py insights.html
+      - run: pyinstaller widget.spec --noconfirm
+        env:
+          APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.0' }}
+      - name: Check Windows bundle
+        if: runner.os == 'Windows'
+        run: python tools/check_bundle.py dist/QuotaTank.exe
+      - name: MSIX (윈도우, 서명 전)
+        if: runner.os == 'Windows'
+        env:
+          APP_VERSION: ${{ github.ref_type == 'tag' && github.ref_name || '0.0.1' }}
+          AIW_ONEDIR: "1"
+          # 서명 인증서의 주체(Subject)와 같아야 설치된다. 서명하지 않는 빌드는 시험용 이름을 쓴다
+          MSIX_PUBLISHER: ${{ vars.MSIX_PUBLISHER || 'CN=QuotaTank Dev' }}
+          MSIX_PUBLISHER_NAME: ${{ vars.MSIX_PUBLISHER_NAME || 'QuotaTank' }}
+        run: |
+          pyinstaller widget.spec --noconfirm --distpath dist/onedir --workpath build/onedir
+          python tools/check_bundle.py dist/onedir/QuotaTank
+          python tools/build_msix.py --version "$env:APP_VERSION" --publisher "$env:MSIX_PUBLISHER" --publisher-name "$env:MSIX_PUBLISHER_NAME" --app dist/onedir/QuotaTank --out dist/QuotaTank-windows.msix
+      - name: 묶기 (윈도우)
+        if: runner.os == 'Windows'
+        run: Move-Item dist/QuotaTank.exe ${{ matrix.out }}
+      - name: 묶기 (맥)
+        if: runner.os == 'macOS'
+        run: |
+          # 서명(ad-hoc)이 깨진 앱은 Gatekeeper 가 "손상됨"으로 보고 "그래도 열기"도 주지 않는다
+          codesign --verify --deep --strict --verbose=2 "dist/QuotaTank.app"
+          ditto -c -k --keepParent "dist/QuotaTank.app" ${{ matrix.out }}
+      - name: SHA-256
+        env:
+          ARTIFACT: ${{ matrix.out }}
+        run: python -c "import os,hashlib,pathlib; p=pathlib.Path(os.environ['ARTIFACT']); p.with_suffix(p.suffix+'.sha256').write_text(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+p.name+'\n', encoding='utf-8')"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ runner.os }}
+          path: |
+            ${{ matrix.out }}
+            ${{ matrix.out }}.sha256
+          if-no-files-found: error
+      - name: 서명 전 MSIX 보관 (릴리스에는 넣지 않음)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Windows-msix-unsigned
+          path: dist/QuotaTank-windows.msix
+          if-no-files-found: error
+
+  sign:
+    if: github.event_name == 'push' && github.ref_type == 'tag' && vars.AZURE_SIGNING_ENDPOINT != ''
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    environment: release  # 저장소 설정 > Environments 에서 승인자를 지정할 수 있다
+    permissions:
+      contents: read
+      id-token: write  # Azure 로그인(OIDC). 비밀 키를 저장소에 두지 않는다
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Windows
+          path: out
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Windows-msix-unsigned
+          path: out
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.AZURE_CERT_PROFILE }}
+          files: |
+            ${{ github.workspace }}\out\QuotaTank-windows.exe
+            ${{ github.workspace }}\out\QuotaTank-windows.msix
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          description: QuotaTank
+      - name: 서명 확인과 SHA-256
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+          foreach ($f in Get-ChildItem out -Include *.exe, *.msix -Recurse) {
+            & $signtool.FullName verify /pa $f.FullName
+            if ($LASTEXITCODE -ne 0) { throw "서명 확인 실패: $($f.Name)" }
+            $hash = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLower()
+            [IO.File]::WriteAllText("$($f.FullName).sha256", "$hash  $($f.Name)`n")
+          }
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: Windows
+          overwrite: true  # 서명 전 파일을 서명한 파일로 바꾼다
+          path: out/*
+          if-no-files-found: error
+
+  publish:
+    # 서명을 설정하지 않아 sign 이 건너뛰어져도 올린다. 서명이 실패하면 올리지 않는다
+    if: >-
+      !cancelled() && github.event_name == 'push' && github.ref_type == 'tag'
+      && needs.build.result == 'success' && contains(fromJSON('["success", "skipped"]'), needs.sign.result)
+    needs: [build, sign]
+    runs-on: ubuntu-latest
+    environment: release  # 저장소 설정 > Environments 에서 승인자를 지정할 수 있다
+    concurrency:
+      group: release
+      cancel-in-progress: false
+    permissions:
+      contents: write  # 이 저장소에 초안 릴리스를 만든다
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: Windows
+          path: release
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: macOS
+          path: release
+      - name: 릴리스 파일 검사(정해진 이름과 SHA-256 만)
+        shell: bash
+        run: |
+          cd release
+          for f in *; do
+            case "$f" in
+              QuotaTank-windows.exe|QuotaTank-windows.msix|QuotaTank-mac-arm64.zip) test -f "$f.sha256" ;;
+              *.sha256) test -f "${f%.sha256}" ;;
+              *) echo "예상하지 못한 파일: $f"; exit 1 ;;
+            esac
+          done
+          sha256sum -c *.sha256
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: release/*
+          fail_on_unmatched_files: true
+          draft: true
+          generate_release_notes: false
+          name: QuotaTank ${{ github.ref_name }}
+          body: |
+            OS에 맞는 설치파일과 SHA-256 확인 파일을 받으세요. 사용법과 데이터 처리 안내는 README를 참고하세요.
+            변경 내역은 공개 전에 작성자가 검토해 추가합니다.

@@ -1,0 +1,1243 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>QuotaTank</title>
+<link rel="stylesheet" href="common.css?v=5">
+<style>
+html, body { background: var(--bg); overflow: hidden; }
+#app { position: relative; display: inline-block; vertical-align: top; }
+body:not(.compact) #compact, body.compact #detail { display: none; }
+body:not(.menu) #menu, body:not(.menu) #scrim { display: none; }
+
+/* ── 간단히 보기: 평소엔 링만, 마우스를 올리면 숫자 ── */
+/* 시작 창이 좁아도 링 수로 폭을 정한다. 창 폭에 따라 줄바꿈하면 잘못 측정한 크기로 고정된다. */
+#compact { padding: 10px 12px 9px; display: flex; gap: 12px; flex-wrap: wrap; width: max-content; max-width: 300px; }
+.cmp { display: grid; justify-items: center; }
+.ring { position: relative; width: 50px; height: 50px; }
+.ring svg { width: 50px; height: 50px; transform: rotate(-90deg); overflow: visible; display: block; }
+.ring .tr { fill: none; stroke: var(--track); }
+.ring .v5 { fill: none; stroke: var(--brand); stroke-width: 6; stroke-linecap: round; }
+.ring .vw { fill: none; stroke: var(--brand); stroke-width: 3; stroke-linecap: round; opacity: .55; }
+/* 시간 눈금: 바깥 링 위를 지나가는 밝은 색의 흐릿한 원 (다크에선 톤 다운) */
+.ring .pc { transform-origin: 32px 32px; }
+.ring .pc .glow { fill: var(--mark); opacity: var(--mark-glow); }
+.ring .pc .core { fill: var(--mark); filter: drop-shadow(0 0 1px #0006); }
+.ring .mid { position: absolute; inset: 0; display: grid; place-content: center; font-size: 11px; font-weight: 650; line-height: 1; color: var(--brand); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ring .mid small { font-size: 8px; font-weight: 500; opacity: .75; }
+.cmp .cdw { display: none; }
+.flash .ring svg { animation: flash .9s ease-out; }
+@keyframes flash { 30% { filter: drop-shadow(0 0 9px var(--brand)); } }
+/* 한도 가까움(85%↑): 링 왼쪽 위의 작은 빨간 점 */
+.ring .hd { position: absolute; top: 0; left: 0; width: 8px; height: 8px; border-radius: 50%; background: var(--crit); box-shadow: 0 0 0 2px var(--bg); }
+.ring .hd[hidden] { display: none; }
+.off .ring { opacity: .45; }
+
+/* ── 자세히 보기: 애니메이션 없음 ── */
+#detail, #detail * { animation: none !important; transition: none !important; }
+#detail { position: relative; width: 300px; padding: 10px; display: grid; gap: 8px; }
+/* ── 계정 관리: 목록(순서·이름·삭제)과 추가(서비스 → 방법). 설명 문장 없이 버튼으로만 ── */
+body.menu #accounts-panel, body.accounts-open #compact, body.accounts-open #detail { display: none; }
+#accounts-panel { width: 300px; max-height: 560px; overflow-y: auto; box-sizing: border-box; padding: 6px 10px 12px; display: grid; gap: 8px; align-content: start; }
+#accounts-panel[hidden], #accounts-panel [hidden], .svc.disabled { display: none; }
+/* 추가 중에는 목록 대신 추가 화면을, 로그인 기다리는 동안에는 대기 화면만 보인다 */
+#accounts-panel.adding #account-list, #accounts-panel.adding #add-open, #accounts-panel.waiting #add-box,
+#accounts-panel.adding #credit-h, #accounts-panel.adding #credit-set { display: none; }
+/* 처음 실행 안내: 찾은 로그인과 켤 설정을 보여 주고 한 번에 적용한다 */
+body.welcome #compact, body.welcome #detail, body.welcome #accounts-panel { display: none; }
+#welcome { width: 300px; box-sizing: border-box; padding: 14px 10px 12px; display: grid; gap: 8px; align-content: start; }
+#welcome[hidden], #welcome [hidden] { display: none; }
+.w-hero { display: grid; gap: 4px; padding: 0 8px 4px; }
+.w-hero b { font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.w-hero span { font-size: 12px; line-height: 1.45; color: var(--muted); }
+.wrow { display: flex; align-items: center; gap: 10px; min-height: 46px; padding: 0 12px; font-size: 12.5px; cursor: pointer; }
+.wrow > span { flex: 1; min-width: 0; display: grid; gap: 1px; font-weight: 500; }
+.wrow b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wrow small { font-size: 10.5px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wrow em { font-style: normal; font-size: 11px; color: var(--faint); }
+.wrow em.ok { color: var(--fg); font-weight: 600; }
+.sw { appearance: none; flex: none; position: relative; width: 36px; height: 22px; margin: 0; border-radius: 99px; background: var(--track); cursor: pointer; transition: background .15s; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px #0004; transition: transform .15s; }
+.sw:checked { background: var(--fg); }
+.sw:checked::after { transform: translateX(14px); background: var(--inv); }
+.sw:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+.btn.ghost { background: none; color: var(--muted); min-height: 30px; }
+#w-msg { margin: 0 8px; font-size: 11px; color: var(--crit); }
+#w-msg:empty { display: none; }
+/* API 크레딧 설정: 결제일 · 한 달 크레딧 · 관리자 키 */
+.crow { display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px 0 12px; font-size: 12.5px; }
+.crow > span { flex: 1; font-weight: 500; }
+.crow em { font-style: normal; font-size: 11.5px; color: var(--muted); }
+.crow em.ok { color: var(--fg); font-weight: 600; }
+.crow input { box-sizing: border-box; height: 28px; padding: 0 8px; font: 12.5px var(--f); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; outline: none; user-select: text; }
+.crow input:focus { border-color: var(--fg); }
+#credit-day { width: 52px; text-align: right; }
+#credit-key { width: 128px; }
+.crow .seg { display: flex; padding: 2px; gap: 2px; border-radius: 7px; background: var(--track); }
+.crow .seg button { all: unset; padding: 3px 8px; border-radius: 5px; font-size: 11.5px; color: var(--muted); cursor: pointer; }
+.crow .seg button[aria-checked="true"] { background: var(--subtle); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px #0003; }
+.crow .seg button:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+/* 자세히 보기의 API 크레딧 카드: 남은 금액이 크게, 막대는 쓴 비율 */
+.svc.credit .cname { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: -.01em; }
+.svc.credit .big small { margin-left: 4px; }
+.panel-head { display: flex; align-items: center; gap: 2px; height: 40px; padding: 0 0 0 6px; }
+.panel-head strong { flex: 1; font-size: 14px; font-weight: 600; letter-spacing: -.015em; }
+#accounts-panel.adding .panel-head { padding-left: 0; }
+.btn { all: unset; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 0; min-height: 28px; padding: 0 12px;
+  border-radius: 99px; background: var(--track); font: 600 12px var(--f); color: var(--fg); cursor: pointer; white-space: nowrap; }
+.btn > span { overflow: hidden; text-overflow: ellipsis; }
+.btn:hover:not(:disabled) { opacity: .85; }
+.btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+.btn:disabled { opacity: .35; cursor: default; }
+.btn svg { flex: none; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.btn.solid { background: var(--fg); color: var(--inv); }
+.btn.icon { width: 26px; min-height: 26px; padding: 0; border-radius: 7px; background: none; color: var(--faint); }
+.btn.icon:hover:not(:disabled) { opacity: 1; color: var(--fg); background: var(--hover); }
+.btn.danger { color: var(--crit); background: var(--subtle); box-shadow: inset 0 0 0 1px var(--line); }
+.btn.wide { width: 100%; min-height: 34px; border-radius: 10px; }
+/* 묶음 목록: 둥근 묶음 하나에 줄을 쌓고 줄 사이는 얇은 선 */
+.group, #account-list { display: grid; background: var(--subtle); border-radius: 12px; overflow: hidden; }
+.group > * + *, #account-list > * + * { box-shadow: inset 0 1px 0 var(--line); }
+.sec { display: flex; justify-content: space-between; margin: 6px 8px -2px; font-size: 10.5px; font-weight: 500; color: var(--muted); }
+.sec span { color: var(--faint); }
+.acct { display: flex; align-items: center; gap: 8px; min-height: 50px; box-sizing: border-box; padding: 0 4px 0 12px; }
+.acct .slot { flex: none; width: 16px; }
+.acct .pick { flex: none; width: 16px; height: 16px; min-height: 16px; padding: 0; border-radius: 50%; background: none; box-shadow: inset 0 0 0 1.5px var(--line); color: var(--inv); }
+.acct .pick svg { width: 10px; height: 10px; stroke-width: 2.2; visibility: hidden; }
+.acct .pick[aria-pressed="true"] { background: var(--fg); box-shadow: none; }
+.acct .pick[aria-pressed="true"] svg { visibility: visible; }
+.acct .pick:hover:not(:disabled) { opacity: 1; box-shadow: inset 0 0 0 1.5px var(--muted); }
+.acct .who { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.acct .who b { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 12.5px; font-weight: 600; letter-spacing: -.01em; }
+.acct .who b > span, .acct .who small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct .who small { font-size: 10.5px; color: var(--muted); }
+.acct input { flex: 1; min-width: 0; box-sizing: border-box; height: 28px; padding: 0 8px; font: 12.5px var(--f); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 7px; outline: none; }
+.acct input:focus { border-color: var(--fg); }
+.acct .acts { flex: none; display: flex; }
+.acct .acts .btn.icon { width: 22px; }
+.acct .acts .btn:not(.icon) { margin-left: 4px; }
+.acct .acts .gap { width: 22px; }
+.acct.confirm { background: var(--hover); }
+#add-box { display: grid; gap: 8px; }
+.found, .provs .btn, .ways .btn { display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box; }
+.found { min-height: 50px; padding: 0 10px 0 12px; }
+.found .who { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.found .who b, .found .who small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.found .who b { font-size: 12.5px; font-weight: 600; }
+.found .who b span { font-weight: 400; color: var(--muted); }
+.found .who small { font: 10px ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; color: var(--faint); }
+.provs .btn, .ways .btn { justify-content: flex-start; min-height: 44px; padding: 0 10px 0 12px; border-radius: 0; background: none; font-size: 12.5px; }
+.provs .btn:hover:not(:disabled), .ways .btn:hover:not(:disabled) { opacity: 1; background: var(--hover); }
+.provs .btn small, .ways .btn small { flex: 1; font-size: 10.5px; font-weight: 400; color: var(--muted); text-align: right; }
+.provs .btn svg, .ways .btn svg { color: var(--faint); }
+.provs .btn[aria-checked="true"] { background: var(--hover); }
+/* 로그인 대기: 가운데 정렬한 회전 표시 + 서비스 표식 + 안내 + 취소 */
+.login-state { display: grid; justify-items: center; gap: 8px; padding: 18px 12px 12px; text-align: center; background: var(--subtle); border-radius: 12px; font-size: 11.5px; color: var(--muted); }
+.login-state .spin { width: 26px; height: 26px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--track); border-top-color: var(--fg); animation: sp 1.1s linear infinite; }
+@keyframes sp { to { transform: rotate(360deg); } }
+.login-state .lchip { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px 0 5px; border-radius: 99px; box-shadow: inset 0 0 0 1px var(--line); font-size: 11.5px; font-weight: 600; color: var(--fg); }
+.login-state strong { font-size: 13.5px; font-weight: 600; letter-spacing: -.015em; color: var(--fg); }
+.login-state .btn { margin-top: 4px; min-width: 96px; }
+.login-state:not(.waiting) .spin, .login-state:not(.waiting) strong { display: none; }
+.login-state.error, #account-message { color: var(--crit); }
+#account-message { margin: 0; padding: 0 4px; font-size: 11.5px; overflow-wrap: anywhere; }
+#account-message:empty { display: none; }
+#account-message.ok { color: var(--muted); }
+.row[hidden] { display: none; }
+.svc { background: var(--subtle); border-radius: 12px; padding: 12px 14px 13px; display: grid; gap: 9px; }
+.svc header { display: flex; align-items: center; gap: 8px; }
+.chip { flex: none; font-size: 12px; color: var(--fg); border: 0; border-radius: 2em; padding: 0 5px; font-weight: 600; line-height: 18px; letter-spacing: -.01em; }
+.chip { max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 이름표 = 간단히 보기 표시 토글. 끄면 이름표가 흐려지고 간단히 보기에서 그 링이 빠진다 */
+button.chip { font-family: var(--f); display: inline-flex; align-items: center; gap: 6px; padding: 0 4px 0 0; background: none; cursor: pointer; }
+button.chip .cn { overflow: hidden; text-overflow: ellipsis; }
+button.chip .sw { flex: none; position: relative; width: 14px; height: 8px; border-radius: 99px; background: var(--fill); }
+button.chip .sw::after { content: ""; position: absolute; top: 1px; left: 7px; width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+button.chip:hover .sw { filter: brightness(1.12); }
+button.chip[aria-pressed="false"] { color: var(--muted); }
+button.chip[aria-pressed="false"] .sw { background: var(--line); }
+button.chip[aria-pressed="false"] .sw::after { left: 1px; }
+button.chip:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+.svc.hid .body { opacity: .45; }
+.cmp.hid { display: none; }
+.pill { flex: none; margin-left: auto; font-size: 10px; font-weight: 500; border-radius: 2em; padding: 0 6px; line-height: 16px; color: var(--muted); background: var(--track); }
+.svc header { gap: 6px !important; }
+.hero { display: flex; align-items: baseline; justify-content: space-between; }
+.hl { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.big { font-family: -apple-system, "SF Pro Display", "Segoe UI Variable Display", var(--f); font-size: 34px; font-weight: 400; letter-spacing: -.035em; line-height: 1.05;
+  background: var(--fill); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.big small { font-size: 14px; font-weight: 500; letter-spacing: 0; margin-left: 2px; }
+/* 한도 가까움(85%↑): 큰 숫자 옆 빨간 점 + 짧은 글자 */
+.hi { display: inline-flex; align-items: center; gap: 4px; font-size: 10.5px; font-weight: 600; color: var(--crit); white-space: nowrap; }
+.hi::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--crit); }
+.hi[hidden] { display: none; }
+.cdt { font-size: 15px; font-weight: 500; letter-spacing: -.01em; }
+.cdt.urgent { color: var(--crit); }
+.row { display: grid; grid-template-columns: 34px 1fr auto; align-items: center; gap: 8px; }
+.row .l { font-size: 11px; color: var(--muted); }
+.row .v { font-size: 11px; color: var(--fg); text-align: right; }
+.bar { position: relative; height: 6px; border-radius: 99px; background: var(--track); }
+.bar.thin { height: 4px; }
+.bar .fill { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--fill, var(--brand)); }
+.bar .gap { position: absolute; top: 0; bottom: 0; border-radius: 2px; }
+.bar .gap.hot { background: repeating-linear-gradient(-45deg, color-mix(in srgb, var(--crit) 55%, transparent) 0 3px, transparent 3px 6px); }
+.bar .gap.cool { background: color-mix(in srgb, var(--fg) 9%, transparent); }
+.bar .pace { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; border-radius: 2px; background: var(--pace); box-shadow: 0 0 0 2px var(--subtle); }
+.spark { width: 100%; height: auto; display: block; overflow: visible; }
+.spark text { font: 500 10px var(--f); fill: var(--muted); font-variant-numeric: tabular-nums; }
+.spark .grid { stroke: var(--line); stroke-width: 1; opacity: .6; }
+.spark .pline { stroke: var(--muted); stroke-dasharray: 2 3; stroke-width: 1; opacity: .6; fill: none; }
+.spark .act { fill: none; stroke: var(--brand); stroke-width: 1.8; stroke-linejoin: round; }
+.spark .area { fill: var(--brand); opacity: .14; }
+.spark .proj { fill: none; stroke: var(--brand); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.spark .eta { fill: var(--crit); }
+.spark .gapz { fill: var(--muted); opacity: .14; }
+.spark .stuck { stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 3 3; fill: none; }
+.spark text.crit { fill: var(--crit); font-weight: 600; }
+.spark text.gapt { fill: var(--muted); font-weight: 600; font-size: 11px; }
+.spark .end { fill: var(--brand); stroke: var(--subtle); stroke-width: 2; }
+.fc { font-size: 12px; margin: 0; display: grid; gap: 1px; }
+.fc .warn { color: var(--crit); }
+.fc .f2 { color: var(--fg); font-weight: 600; }
+.fc .wdetail { color: var(--muted); font-size: 11px; }
+.fc .f2.warn { color: var(--crit); }
+/* 5시간 사이클: 채운 점 = 오늘 실제 시작, 빈 점 = 다음에 시작할 수 있는 시각 */
+.cy { display: flex; flex: 1; min-width: 0; align-items: center; gap: 2px; overflow: hidden; }
+.cy .pt { display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; flex: none; }
+.cy .ln { flex: 1; min-width: 3px; height: 2px; border-radius: 1px; background: var(--line); }
+.cy .ln.cur { background: linear-gradient(90deg, var(--brand) var(--p), var(--line) var(--p)); }
+.cy .pt i { width: 6px; height: 6px; border-radius: 50%; border: 1.5px solid var(--brand); flex: none; }
+.cy .pt.on i { background: var(--brand); }
+.cy .pt b { font-size: 10px; font-weight: 500; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cy .pt.on b { color: var(--fg); }
+.cy .pt.cur b { color: var(--brand); font-weight: 700; }
+.cy .pt.late i { border-style: dashed; opacity: .6; }
+.cy .pt.late b { opacity: .6; }
+/* 서비스 장애 배지 (status.claude.com / status.openai.com) */
+.st { flex: none; font-size: 9px; font-weight: 700; border-radius: 2em; padding: 0 4px; line-height: 14px; color: var(--bg); background: var(--stc); }
+.st[hidden] { display: none; }
+.ring .sd { position: absolute; top: 0; right: 0; width: 9px; height: 9px; border-radius: 50%; background: var(--stc); box-shadow: 0 0 0 2px var(--bg); }
+.ring .sd[hidden] { display: none; }
+/* 모델별 등 추가 한도 */
+.xl { display: grid; gap: 5px; }
+.xl:empty { display: none; }
+.xrow { display: grid; grid-template-columns: 74px 1fr auto; align-items: center; gap: 8px; }
+.xrow .l { font-size: 10.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.xrow .v { font-size: 11px; color: var(--muted); text-align: right; }
+.empty { font-size: 12px; color: var(--muted); }
+.err { font-size: 11px; color: var(--crit); }
+/* 계정 추가 줄: 카드와 같은 폭의 한 줄. 누르면 계정 관리의 추가 화면이 바로 열린다 */
+.addrow { all: unset; box-sizing: border-box; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 46px; padding: 0 10px 0 14px; background: var(--subtle); border-radius: 12px; cursor: pointer; }
+.addrow:hover { background: color-mix(in srgb, var(--subtle) 94%, var(--fg)); }
+.addrow:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+.addrow .plus { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--fg); color: var(--inv); display: grid; place-items: center; }
+.addrow svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.addrow .t { flex: 1; min-width: 0; display: grid; }
+.addrow .t b { font-size: 12.5px; font-weight: 600; }
+.addrow .t small { font-size: 10.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.addrow .chev { flex: none; color: var(--faint); width: 14px; height: 14px; stroke-width: 1.4; }
+.foot { font-size: 10.5px; color: var(--faint); padding: 0 6px 2px; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.foot .add { all: unset; font-size: 10.5px; line-height: 16px; color: var(--muted); cursor: pointer; }
+.foot .add:hover, .foot .add:focus-visible { color: var(--fg); }
+.foot .upd { all: unset; font-size: 10.5px; line-height: 16px; font-weight: 600; color: var(--fg); cursor: pointer; }
+.foot .upd::before { content: ""; display: inline-block; width: 5px; height: 5px; margin: 0 5px 1px 0; border-radius: 50%; background: var(--crit); vertical-align: middle; }
+.foot .upd:hover, .foot .upd:focus-visible { text-decoration: underline; }
+.foot .upd[hidden] { display: none; }
+.toast { display: none; padding: 9px 12px; border-radius: 12px; font-size: 12px; font-weight: 500; color: var(--fg); background: var(--subtle); }
+.toast.show { display: block; }
+
+/* Claude 공유 사용량: 사용률 막대를 내 몫(브랜드색)과 다른 곳(회색)으로 나눠 칠한다 */
+.shr { font-size: 10px; color: var(--muted); }
+.shr[hidden] { display: none; }
+/* 막대 위 표시: 채움 중 이 PC 에서 쓴 몫은 보라색, 끝을 내림 세모(▼)가 가리키고 양 옆에 퍼센트를 작게 적는다. 나머지(사용률 색)가 그 밖의 사용 */
+.bar .mine { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: var(--mine); }
+.bar .mk { position: absolute; top: -7px; width: 0; height: 0; margin-left: -4px; border: 4px solid transparent; border-top: 5px solid var(--mine); border-bottom: 0; }
+.bar .nl, .bar .nr { position: absolute; top: -11px; font: 600 9px/9px var(--f); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; }
+.bar .nl { transform: translateX(-100%); padding-right: 7px; text-align: right; }
+.bar .nr { padding-left: 7px; }
+.bar .nl > * + *, .bar .nr > * + * { margin-left: 4px; }
+.bar .nm { color: var(--mine); }
+.bar .no { color: var(--muted); }
+.bar .mk[hidden], .bar .nl[hidden], .bar .nr[hidden] { display: none; }
+.spark .marea { fill: var(--mine); opacity: .28; }
+.spark .mline { fill: none; stroke: var(--mine); stroke-width: 1.8; stroke-linejoin: round; }
+
+/* ── 탭: 자세히 보기 카드는 두 개씩. 다른 탭 카드가 한도 가까이(85%↑)·오류·장애면 빨간 점 ── */
+#tabs { display: flex; gap: 3px; padding: 2px; border-radius: 7px; background: var(--track); }
+#tabs[hidden] { display: none; }
+#tabs button { all: unset; flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 4px;
+  padding: 4px 6px; border-radius: 5px; font-size: 11px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+#tabs button[aria-selected="true"] { background: var(--subtle); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px #0003; }
+#tabs button:hover:not([aria-selected="true"]) { color: var(--fg); }
+#tabs button:focus-visible { outline: 2px solid var(--fg); outline-offset: 1px; }
+#tabs .dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--fill, var(--brand)); }
+#tabs .tn { overflow: hidden; text-overflow: ellipsis; }
+#tabs .al { flex: none; width: 6px; height: 6px; margin-left: -1px; border-radius: 50%; background: var(--crit); align-self: flex-start; }
+#tabs .al[hidden] { display: none; }
+.svc.away { display: none; }
+
+/* ── 메뉴 (우클릭): 위젯 위에 뜨는 팝업. 바깥(#scrim)을 누르면 닫힌다 ── */
+#scrim { position: absolute; inset: 0; z-index: 10; background: color-mix(in srgb, var(--bg) 35%, transparent); }
+#menu { position: absolute; z-index: 11; width: 236px; padding: 6px; display: grid; gap: 1px; box-sizing: border-box;
+  background: var(--subtle); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 6px 20px #0005;
+  transform-origin: var(--ox, 0) var(--oy, 0); animation: pop .28s cubic-bezier(.2,1.3,.3,1); }
+@keyframes pop { from { opacity: 0; transform: scale(.96); } }
+@media (prefers-reduced-motion: reduce) { #menu { animation: none; } }
+#menu button { all: unset; display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 13px; cursor: default; }
+#menu button:hover, #menu button:focus-visible { background: var(--hover); }
+#menu .ck { width: 14px; height: 14px; flex: none; }
+#menu .ck path { stroke: var(--fg); stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; opacity: 0; }
+#menu [aria-checked="true"] .ck path { opacity: 1; }
+#menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px -6px; }
+#menu .danger { color: var(--crit); }
+#menu [hidden] { display: none !important; }
+#menu .seg.sm button { padding: 3px 5px; }
+#cycle-times { width: 112px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg); color: var(--fg); font: inherit; font-size: 12px; user-select: text; }
+#remote-qr { margin: 2px auto 6px; width: 148px; height: 148px; }
+#remote-qr svg { display: block; width: 100%; height: 100%; border-radius: 6px; }
+#remote-l, #cycle-l { margin: 0; padding: 0 8px 4px 30px; font-size: 11px; color: var(--muted); overflow-wrap: anywhere; user-select: text; }
+#menu .theme > span.shl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#menu .theme { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 13px; }
+#menu .theme > span { flex: 1; }
+#menu .seg { display: flex; padding: 2px; gap: 2px; border-radius: 7px; background: var(--track); }
+#menu .seg button { padding: 3px 7px; border-radius: 5px; font-size: 11.5px; color: var(--muted); }
+#menu .seg button[aria-checked="true"] { background: var(--subtle); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px #0003; }
+</style>
+</head>
+<body class="compact">
+<div id="app">
+  <div id="accounts-panel" hidden>
+    <div class="panel-head"><button class="btn icon" id="add-back" type="button" title="뒤로" aria-label="뒤로" hidden><svg viewBox="0 0 16 16"><path d="M10 3.5L5.5 8 10 12.5"/></svg></button><strong id="panel-title">계정</strong><button class="btn icon" id="accounts-close" type="button" title="닫기" aria-label="닫기"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button></div>
+    <div id="account-list"></div>
+    <button class="btn solid wide" id="add-open" type="button" aria-expanded="false" aria-controls="add-box"><svg viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></svg>계정 추가</button>
+    <div class="sec" id="credit-h">API 크레딧<span>Max · Ultra</span></div>
+    <div class="group" id="credit-set">
+      <label class="crow"><span>결제일</span><input id="credit-day" type="number" min="0" max="31" step="1" inputmode="numeric" placeholder="끔" aria-label="결제일(1~31, 0이면 끔)"><em>일</em></label>
+      <div class="crow"><span>한 달 크레딧</span><div class="seg" role="radiogroup" aria-label="한 달 크레딧" id="credit-amount"><button type="button" role="radio" data-v="100">$100</button><button type="button" role="radio" data-v="200">$200</button></div></div>
+      <div class="crow" id="credit-keyrow"><span>관리자 키</span><input id="credit-key" type="password" maxlength="256" placeholder="sk-ant-admin…" autocomplete="off" spellcheck="false" aria-label="Console 관리자 키"><button class="btn solid" type="button" id="credit-save">저장</button></div>
+      <div class="crow" id="credit-saved" hidden><span>관리자 키</span><em class="ok">저장됨</em><button class="btn" type="button" id="credit-clear">지우기</button></div>
+    </div>
+    <div id="add-box" hidden>
+      <div class="sec" id="found-h" hidden>이 PC에서 찾은 로그인<span id="found-n"></span></div>
+      <div class="group" id="found" hidden></div>
+      <div class="sec">새로 로그인</div>
+      <div class="provs group" role="radiogroup" aria-label="서비스" id="provs"></div>
+      <div class="ways group" id="ways" hidden></div>
+    </div>
+    <div class="login-state" id="login-state" role="status" aria-live="polite" hidden><i class="spin" aria-hidden="true"></i><span class="lchip" id="login-chip"></span><strong>브라우저에서 로그인을 마쳐 주세요</strong><span id="login-msg"></span><button class="btn" type="button" id="login-cancel">취소</button></div>
+    <p id="account-message" role="status" aria-live="polite"></p>
+  </div>
+  <div id="welcome" hidden>
+    <div class="w-hero"><b>QuotaTank 시작하기</b><span>이 PC의 로그인으로 Claude · Codex · Gemini 한도를 보여 줘요. 아래처럼 설정할게요.</span></div>
+    <div class="sec">이 PC의 로그인</div>
+    <div class="group" id="w-base"><div class="wrow"><span>찾는 중…</span></div></div>
+    <div class="sec" id="w-found-h" hidden>함께 연결할 계정<span id="w-found-n"></span></div>
+    <div class="group" id="w-found" hidden></div>
+    <div class="sec">설정</div>
+    <div class="group">
+      <label class="wrow"><span><b>Gemini도 보기</b><small>Antigravity로 로그인돼 있을 때</small></span><input type="checkbox" class="sw" id="w-gemini"></label>
+      <label class="wrow" id="w-startup-row"><span><b id="w-startup-t">윈도우 시작 시 실행</b><small>켜 두면 매번 실행하지 않아도 돼요</small></span><input type="checkbox" class="sw" id="w-startup" checked></label>
+      <label class="wrow"><span><b>한도가 다시 차면 알림</b><small>80% 넘게 쓴 한도가 리셋될 때</small></span><input type="checkbox" class="sw" id="w-alerts" checked></label>
+    </div>
+    <button class="btn solid wide" id="w-go" type="button">이대로 시작</button>
+    <button class="btn wide ghost" id="w-skip" type="button">직접 설정할게요</button>
+    <p id="w-msg" role="status" aria-live="polite"></p>
+  </div>
+  <div id="compact"></div>
+  <div id="detail">
+    <div id="tabs" role="tablist" aria-label="서비스 탭" hidden></div>
+    <div class="toast" id="toast" role="status" aria-live="polite"><span id="toast-t"></span></div>
+  </div>
+  <div id="scrim" aria-hidden="true"></div>
+  <div id="menu" role="menu">
+    <button data-act="refresh"><svg class="ck"></svg>지금 새로고침</button>
+    <button data-act="insights"><svg class="ck"></svg>인사이트 / 예측 보기</button>
+    <button data-act="accounts"><svg class="ck"></svg>계정 관리</button>
+    <hr>
+    <button data-act="compact" role="menuitemcheckbox"><svg class="ck" viewBox="0 0 16 16"><path d="M3 8.5l3 3L13 4.5"/></svg>간단히 보기 (더블클릭)</button>
+    <button data-act="topmost" role="menuitemcheckbox"><svg class="ck" viewBox="0 0 16 16"><path d="M3 8.5l3 3L13 4.5"/></svg>항상 위</button>
+    <button data-act="startup" role="menuitemcheckbox"><svg class="ck" viewBox="0 0 16 16"><path d="M3 8.5l3 3L13 4.5"/></svg><span>윈도우 시작 시 실행</span></button>
+    <div class="theme"><span>테마</span><div class="seg" role="radiogroup" aria-label="테마">
+      <button data-act="theme" data-v="auto" role="menuitemradio">자동</button><button data-act="theme" data-v="light" role="menuitemradio">라이트</button><button data-act="theme" data-v="dark" role="menuitemradio">다크</button>
+    </div></div>
+    <hr>
+    <button data-act="share" role="menuitemcheckbox"><svg class="ck" viewBox="0 0 16 16"><path d="M3 8.5l3 3L13 4.5"/></svg>공유 사용량 나눠 보기</button>
+    <div class="theme" data-share-only hidden><span>요금제</span><div class="seg sm" role="radiogroup" aria-label="요금제">
+      <button data-act="share-plan" data-v="auto" role="menuitemradio">자동</button><button data-act="share-plan" data-v="pro" role="menuitemradio">Pro</button><button data-act="share-plan" data-v="max5" role="menuitemradio">5배</button><button data-act="share-plan" data-v="max20" role="menuitemradio">20배</button>
+    </div></div>
+    <div class="theme" data-share-only hidden><span class="shl" id="solo-l">나만 썼어요</span><div class="seg sm" role="group" aria-label="나만 썼어요">
+      <button data-act="share-solo" data-v="h5">5시간</button><button data-act="share-solo" data-v="week">주간</button>
+    </div></div>
+    <button data-act="share-reset" data-share-only hidden><svg class="ck"></svg>직접 맞춘 값 지우기</button>
+    <hr>
+    <button data-act="cycle" role="menuitemcheckbox"><svg class="ck" viewBox="0 0 16 16"><path d="M3 8.5l3 3L13 4.5"/></svg>사이클 예약 (Claude)</button>
+    <div class="theme" id="cycle-row" hidden><span>시작 시각</span><input id="cycle-times" type="text" maxlength="40" spellcheck="false" autocomplete="off" placeholder="08:00, 13:00" aria-label="Claude 5시간 창을 시작할 시각(4개까지)"></div>
+    <p id="cycle-l" hidden>이 Claude 계정은 5시간 한도가 없어 예약 시각에 보내지 않아요</p>
+    <button data-act="boot" role="menuitemcheckbox" title="PC 를 켜거나 깨웠을 때 Claude 토큰이 만료돼 있으면 한 마디를 보내 갱신해요. 5시간 창도 그때 시작돼요"><svg class="ck" viewBox="0 0 16 16"><path d="M3 8.5l3 3L13 4.5"/></svg>켤 때 Claude 시작</button>
+    <button data-act="remote" role="menuitemcheckbox"><svg class="ck" viewBox="0 0 16 16"><path d="M3 8.5l3 3L13 4.5"/></svg>폰에서 보기 (Tailscale)</button>
+    <p id="remote-l" hidden></p>
+    <div id="remote-qr" role="img" aria-label="폰에서 보기 주소 QR 코드" hidden></div>
+    <button data-act="remote-copy" hidden><svg class="ck"></svg><span>주소 복사</span></button>
+    <hr>
+    <button data-act="quit" class="danger"><svg class="ck"></svg>종료</button>
+  </div>
+</div>
+<script src="common.js?v=5"></script>
+<script>
+(() => {
+const PROV = { claude: 'Claude', gpt: 'Codex', gemini: 'Gemini' };  // 서비스 이름. NAMES 는 카드 이름(사용자가 바꿀 수 있다)
+const KEYS = ['claude', 'gpt', 'gemini'], NAMES = { ...PROV };
+const R5 = 28, RW = 19, C5 = 2 * Math.PI * R5, CW = 2 * Math.PI * RW;
+const body = document.body, app = $('#app'), compact = $('#compact'), detail = $('#detail');
+let api = null, S = {}, ERR = {}, STATUS = {}, cfg = { compact: true, topmost: true, startup: false, day_reset_hour: 6, theme: 'auto', gemini_enabled: false }, fetchedAt = 0;
+const UI = {}, prevActive = {};
+let listKey = '', ACCOUNTS = [], CUSTOM = {}, geminiOn = false;
+let CREDIT = null;  // API 크레딧(결제일을 정하지 않았으면 null)
+let WORK = {}, canSwitch = false;  // 작업 계정: 서비스 → 그냥 실행한 claude·codex 가 쓰는 카드 키 (윈도우만)
+
+// ── build ──
+function buildService(k, provider = k) {
+  const c = document.createElement('div');
+  c.className = 'cmp off'; c.style.setProperty('--brand', `var(--${provider})`); c.dataset.p = provider; c.title = NAMES[k];
+  c.innerHTML = `<div class="ring"><svg viewBox="0 0 64 64"><circle class="tr" cx="32" cy="32" r="${R5}" stroke-width="6"/><circle class="tr" cx="32" cy="32" r="${RW}" stroke-width="3"/>
+    <circle class="v5" cx="32" cy="32" r="${R5}" stroke-dasharray="${C5}"/><circle class="vw" cx="32" cy="32" r="${RW}" stroke-dasharray="${CW}"/>
+    <defs><filter id="soft-${k}" x="-1" y="-1" width="3" height="3"><feGaussianBlur stdDeviation="1.8"/></filter></defs>
+    <g class="pc"><circle class="glow" cx="60" cy="32" r="5" filter="url(#soft-${k})"/><circle class="core" cx="60" cy="32" r="2.4"/></g></svg><i class="sd" hidden></i><i class="hd" title="한도 가까움" hidden></i><div class="mid"><span><span class="p"></span><small>%</small></span></div></div>
+    <div class="cdw"><div class="cd"></div></div>`;
+  compact.append(c);
+
+  const d = document.createElement('section');
+  d.className = 'svc'; d.style.setProperty('--brand', `var(--${provider})`); d.dataset.p = provider;
+  d.innerHTML = `<header><button class="chip" type="button" role="switch" aria-pressed="true"><i class="sw" aria-hidden="true"></i><span class="cn"></span></button><span class="st" hidden></span><div class="cy" title="5시간 사이클 시작 시각 (채운 점: 실제 시작, 빈 점: 다음 시작 가능)"></div><span class="pill"></span></header>
+    <div class="body">
+    <div class="hero"><div class="hl"><div class="big"><span class="p num"></span><small>%</small></div><span class="hi" hidden>한도 가까움</span></div><span class="cdt num" title="리셋까지 남은 시간"></span></div>
+    <div class="row"><span class="l">5시간</span><div class="bar b5"><i class="gap"></i><i class="fill"></i><i class="mine"></i><i class="mk" hidden></i><span class="nl" hidden><span class="nm"></span></span><span class="nr" hidden><span class="no"></span></span><i class="pace"></i></div><span class="v"></span></div>
+    <div class="row"><span class="l">주간</span><div class="bar thin bw"><i class="fill"></i><i class="mine"></i><i class="mk" hidden></i><span class="nl" hidden><span class="nm"></span></span><span class="nr" hidden><span class="no"></span></span><i class="pace"></i></div><span class="v vwt num"></span></div>
+    ${k === 'claude' ? '<div class="shr" hidden>사용량 나누는 중…</div>' : ''}
+    ${k === 'claude' ? '<div class="row cr" title="클라우드 세션 크레딧" hidden><span class="l">크레딧</span><div class="bar thin bc"><i class="fill"></i></div><span class="v vct num"></span></div>' : ''}
+    <div class="xl"></div>
+    <p class="fc"><span class="f2"></span><span class="wdetail"></span></p>
+    <div class="sp"></div>
+    </div><div class="err" hidden></div>`;
+  detail.append(d);
+  $('.chip', d).addEventListener('click', () => toggleCompact(k));
+
+  const u = UI[k] = { c, d, provider, fill5: 0, pace: null };
+  u.s5 = new Spring(0, x => { $('.v5', c).style.strokeDashoffset = C5 * (1 - clamp(x, 0, 101) / 100); });
+  u.sw = new Spring(0, x => { $('.vw', c).style.strokeDashoffset = CW * (1 - clamp(x, 0, 101) / 100); });
+}
+KEYS.forEach(k => buildService(k));
+// 자세히 보기 맨 아래: 계정 추가 줄(누르면 추가 화면이 바로 열린다)과 갱신 시각·계정 관리
+const addRow = document.createElement('button'); addRow.type = 'button'; addRow.className = 'addrow'; addRow.setAttribute('aria-controls', 'accounts-panel');
+addRow.innerHTML = '<span class="plus"><svg viewBox="0 0 16 16"><path d="M8 3.5v9M3.5 8h9"/></svg></span><span class="t"><b>계정 추가</b><small>Claude · Codex · Gemini</small></span><svg class="chev" viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></svg>';
+const foot = document.createElement('div'); foot.className = 'foot';
+foot.innerHTML = '<span class="ft" title="마지막 업데이트"></span><button class="upd" type="button" hidden title="받는 곳(GitHub 릴리스)을 브라우저로 열어요"></button><button class="add" type="button" aria-controls="accounts-panel" aria-expanded="false">계정 관리</button>';
+$('.upd', foot).addEventListener('click', () => api && api.open_update());
+// API 크레딧(Max·Ultra 월간 크레딧): 결제일을 정하면 보인다. 큰 글자는 남은 금액, 막대는 이번 주기에 쓴 비율
+const creditCard = document.createElement('section'); creditCard.className = 'svc credit'; creditCard.hidden = true;
+creditCard.dataset.p = 'claude'; creditCard.style.setProperty('--brand', 'var(--claude)');
+creditCard.innerHTML = `<header><span class="cname"><i class="sg"></i>API 크레딧</span><span class="pill"></span></header>
+  <div class="hero"><div class="hl"><div class="big"><span class="cv num"></span><small></small></div><span class="hi" hidden>곧 사라짐</span></div><span class="cdt num"></span></div>
+  <div class="row cbar"><span class="l">사용</span><div class="bar"><i class="fill"></i></div><span class="v num"></span></div>
+  <p class="fc"><span class="f2"></span><span class="wdetail"></span></p><div class="err" hidden></div>`;
+detail.append(creditCard, addRow, foot);
+
+// ── 탭: 자세히 보기는 카드 두 개씩 ──
+// 순서는 계정 관리에서 정한 대로(기본: Claude·Codex → Gemini → 추가 계정은 연결한 순서). 사용률로 순서를 바꾸면 카드가 탭 사이를 옮겨 다녀 헷갈린다.
+// 대신 다른 탭의 카드가 한도 가까이(85%↑)·오류·장애면 그 탭에 빨간 점을 띄운다.
+const PER_TAB = 2, tabs = $('#tabs');
+let page = 0, tabsKey = '';
+try { page = Math.max(0, parseInt(localStorage.getItem('aiw.tab'), 10) || 0); } catch {}
+function pages() {
+  const out = [];
+  const enabled = KEYS.filter(k => k !== 'gemini' || cfg.gemini_enabled);
+  for (let i = 0; i < enabled.length; i += PER_TAB) out.push(enabled.slice(i, i + PER_TAB));
+  return out;
+}
+const shortName = k => k.startsWith('account_') ? NAMES[k].split(' · ').slice(1).join(' · ') || NAMES[k] : NAMES[k];
+function buildTabs() {
+  const ps = pages(), key = JSON.stringify(ps.map(keys => keys.map(k => NAMES[k])));
+  if (key !== tabsKey) {
+    tabsKey = key;
+    tabs.hidden = ps.length < 2;
+    tabs.replaceChildren(...ps.map((keys, i) => {
+      const b = document.createElement('button');
+      b.type = 'button'; b.setAttribute('role', 'tab'); b.dataset.i = i;
+      for (const k of keys) {
+        const dot = document.createElement('i'); dot.className = 'dot'; dot.style.setProperty('--brand', `var(--${UI[k].provider})`); dot.dataset.p = UI[k].provider;
+        b.append(dot);
+        if (ps.length <= 3) { const n = document.createElement('span'); n.className = 'tn'; n.textContent = shortName(k); b.append(n); }
+      }
+      if (ps.length > 3) { const n = document.createElement('span'); n.className = 'tn'; n.textContent = i + 1; b.append(n); }
+      const al = document.createElement('i'); al.className = 'al'; al.hidden = true; b.append(al);
+      b.addEventListener('click', () => setPage(i));
+      return b;
+    }));
+  }
+  setPage(page, false);
+}
+function setPage(i, remember = true) {
+  const ps = pages();
+  page = clamp(i, 0, Math.max(0, ps.length - 1));
+  for (const k of KEYS) UI[k].d.classList.add('away');
+  ps.forEach((keys, n) => keys.forEach(k => UI[k].d.classList.toggle('away', n !== page)));
+  for (const b of tabs.children) {
+    const on = +b.dataset.i === page;
+    b.setAttribute('aria-selected', String(on)); b.tabIndex = on ? 0 : -1;
+  }
+  if (remember) try { localStorage.setItem('aiw.tab', String(page)); } catch {}
+  renderTabAlerts();
+}
+function renderTabAlerts() {
+  pages().forEach((keys, n) => {
+    const b = tabs.children[n]; if (!b) return;
+    const hot = keys.filter(k => UI[k].alert), al = $('.al', b);
+    al.hidden = n === page || !hot.length;
+    b.title = keys.map(k => NAMES[k]).join(' · ') + (hot.length ? ` — 확인 필요: ${hot.map(k => NAMES[k]).join(', ')}` : '');
+  });
+}
+tabs.addEventListener('keydown', e => {
+  const n = pages().length, to = { ArrowLeft: page - 1, ArrowRight: page + 1, Home: 0, End: n - 1 }[e.key];
+  if (to == null) return;
+  e.preventDefault(); setPage((to + n) % n); tabs.children[page].focus();
+});
+tabs.addEventListener('wheel', e => { e.preventDefault(); setPage(page + Math.sign(e.deltaY || e.deltaX)); }, { passive: false });
+buildTabs();
+
+// 간단히 보기에 보일 서비스. 마지막 하나는 끌 수 없다.
+function toggleCompact(k) {
+  const hidden = new Set(cfg.compact_hidden || []);
+  if (hidden.has(k)) hidden.delete(k);
+  else if (KEYS.filter(x => !hidden.has(x) && (x !== 'gemini' || cfg.gemini_enabled)).length > 1) hidden.add(k);
+  cfg.compact_hidden = [...hidden];
+  applyHidden(); api && api.set_compact_hidden(cfg.compact_hidden);
+}
+function applyHidden() {
+  const hidden = new Set(cfg.compact_hidden || []);
+  for (const k of KEYS) {
+    const off = hidden.has(k), chip = $('.chip', UI[k].d);
+    const disabled = k === 'gemini' && !cfg.gemini_enabled;
+    UI[k].c.classList.toggle('hid', off || disabled); UI[k].d.classList.toggle('hid', off);
+    UI[k].d.classList.toggle('disabled', disabled);
+    chip.setAttribute('aria-pressed', String(!off)); chip.setAttribute('aria-checked', String(!off));
+    chip.title = `${NAMES[k]} · 간단히 보기에 ${off ? '숨김 — 눌러서 보이기' : '표시 — 눌러서 숨기기'}`;
+  }
+  buildTabs();
+}
+applyHidden();
+
+// 카드 순서·계정 목록을 서버 상태에 맞춘다. 꺼 둔 Gemini 카드는 맨 뒤에 숨겨 둔다.
+function syncAccounts(st) {
+  const accounts = st.accounts || [], gemini = !!(st.cfg && st.cfg.gemini_enabled);
+  const known = new Set(['claude', 'gpt', 'gemini', ...accounts.map(a => a.id)]);
+  const order = [...new Set([...(st.order || []).filter(k => known.has(k)), ...known])];
+  const key = JSON.stringify([accounts, order, gemini, st.names, st.work]);
+  if (key === listKey) return;
+  listKey = key; ACCOUNTS = accounts; CUSTOM = st.names || {}; geminiOn = gemini;
+  WORK = st.work || {}; canSwitch = !(st.cfg && st.cfg.mac);
+  for (const k in PROV) NAMES[k] = CUSTOM[k] || PROV[k];
+  for (const k of KEYS) {
+    if (known.has(k)) continue;
+    UI[k].c.remove(); UI[k].d.remove(); delete UI[k]; delete S[k]; delete ERR[k];
+  }
+  for (const a of accounts) {
+    NAMES[a.id] = `${PROV[a.provider]} · ${a.name}`;
+    if (!UI[a.id]) buildService(a.id, a.provider);
+  }
+  KEYS.splice(0, KEYS.length, ...order);
+  for (const k of KEYS) { compact.append(UI[k].c); detail.append(UI[k].d); }
+  detail.append(creditCard, addRow, foot);
+  renderList(); syncProviders(); buildTabs();
+  if (api) loadLoginOptions();  // 계정이 바뀌면 '이 PC에서 찾은 로그인' 수도 다시 센다
+}
+
+// ── 계정 관리 화면 ──
+// 목록 한 줄 = 카드 하나. ↑↓ 순서, 연필 이름 수정, 휴지통 삭제(한 번 더 눌러 확인). 기본 Claude·Codex 는 삭제할 수 없다.
+// Claude·Codex 줄 왼쪽의 동그라미 = 작업 계정(그냥 실행한 claude·codex 가 쓰는 계정). 눌러서 서비스마다 하나를 고른다.
+const ICON = { up: 'M8 12.5v-9M4 7l4-4 4 4', down: 'M8 3.5v9M4 9l4 4 4-4', del: 'M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5M6.8 7v3.5M9.2 7v3.5',
+  edit: 'M3 13l.6-2.8 7.3-7.3a1.3 1.3 0 0 1 1.9 0l.3.3a1.3 1.3 0 0 1 0 1.9l-7.3 7.3L3 13z', save: 'M3 8.5l3 3L13 4.5', cancel: 'M4 4l8 8M12 4l-8 8' };
+const LABEL = { up: '위로', down: '아래로', edit: '이름 수정', del: '삭제', save: '저장', cancel: '취소' };
+const iconBtn = (act, off) => `<button class="btn icon" type="button" data-act="${act}" title="${LABEL[act]}" aria-label="${LABEL[act]}"${off ? ' disabled' : ''}><svg viewBox="0 0 16 16"><path d="${ICON[act]}"/></svg></button>`;
+const GAP = '<i class="gap"></i>';  // 없는 버튼 자리: 줄마다 화살표 위치가 같게
+const pick = (on, name) => `<button class="btn pick" type="button" data-act="work" aria-pressed="${on}" title="${on ? '작업 계정' : '작업 계정으로 쓰기'}" aria-label="${escapeHtml(name)} ${on ? '작업 계정' : '작업 계정으로 쓰기'}"><svg viewBox="0 0 16 16"><path d="M3.5 8.5l3 3 6-7"/></svg></button>`;
+let editing = '', confirming = '', busy = false;
+const say = (text, ok) => { const m = $('#account-message'); m.textContent = text || ''; m.classList.toggle('ok', !!ok); };
+function renderList() {
+  const rows = KEYS.filter(k => k !== 'gemini' || geminiOn);
+  $('#account-list').replaceChildren(...rows.map((k, i) => {
+    const a = ACCOUNTS.find(x => x.id === k), provider = a ? a.provider : k;
+    const name = a ? a.name : NAMES[k];
+    const base = k === 'gemini' ? 'Antigravity' : '기본';
+    const switchable = canSwitch && provider in WORK, working = switchable && WORK[provider] === k;
+    const sub = (working ? '작업 계정 · ' : '') + (a ? [PROV[provider], a.email !== a.name && a.email].filter(Boolean).join(' · ') : CUSTOM[k] ? `${PROV[k]} · ${base}` : base);
+    const who = `<span class="who"><b><i class="sg"></i><span>${escapeHtml(name)}</span></b><small>${escapeHtml(sub)}</small></span>`;
+    const row = document.createElement('div'); row.className = 'acct' + (k === confirming ? ' confirm' : ''); row.dataset.id = k;
+    row.style.setProperty('--brand', `var(--${provider})`); row.dataset.p = provider; row.title = a && a.email || name;
+    row.innerHTML = (switchable ? pick(working, name) : '<i class="slot"></i>') + (
+      k === editing ? `<input maxlength="40" aria-label="이름"><span class="acts">${iconBtn('save')}${iconBtn('cancel')}</span>`
+      : k === confirming ? `${who}<span class="acts"><button class="btn danger" type="button" data-act="remove">삭제</button><button class="btn" type="button" data-act="cancel">취소</button></span>`
+      : `${who}<span class="acts">${iconBtn('up', !i)}${iconBtn('down', i === rows.length - 1)}${iconBtn('edit')}${a || k === 'gemini' ? iconBtn('del') : GAP}</span>`);
+    if (k === editing) $('input', row).value = name;
+    return row;
+  }));
+}
+function focusAct(id, ...acts) {
+  for (const act of acts) {
+    const b = $(`#account-list [data-id="${id}"] [data-act="${act}"]:not(:disabled)`);
+    if (b) return b.focus();
+  }
+}
+// 브리지 호출 하나를 돌리고 화면을 맞춘다. 실패하면 이유만 한 줄로 보여 준다.
+async function run(call) {
+  if (!api || busy) return false;
+  busy = true; say('');
+  try {
+    const r = await call();
+    if (r && r.error) { say(r.error); return false; }
+    await poll();
+    return true;
+  } catch { say('다시 시도하세요'); return false; }
+  finally { busy = false; }
+}
+async function listAct(id, act) {
+  if (act === 'edit' || act === 'del') {
+    editing = act === 'edit' ? id : ''; confirming = act === 'del' ? id : '';
+    renderList();
+    if (act === 'edit') { const input = $('#account-list input'); input.focus(); input.select(); }
+    else focusAct(id, 'cancel');
+  } else if (act === 'cancel') {
+    const back = editing ? 'edit' : 'del';
+    editing = confirming = ''; renderList(); focusAct(id, back);
+  } else if (act === 'up' || act === 'down') {
+    if (await run(() => api.move_account(id, act === 'up' ? -1 : 1))) focusAct(id, act, act === 'up' ? 'down' : 'up');
+  } else if (act === 'save') {
+    const name = $('#account-list input').value;
+    if (await run(() => api.rename_account(id, name))) { editing = ''; renderList(); focusAct(id, 'edit'); }
+  } else if (act === 'remove') {
+    if (await run(() => id === 'gemini' ? api.set_gemini_enabled(false) : api.remove_account(id))) { confirming = ''; renderList(); loadLoginOptions(); }
+  } else if (act === 'work') {
+    let msg = '';
+    if (await run(async () => { const r = await api.switch_account(id); msg = r && r.msg; return r; })) { say(msg, true); focusAct(id, 'work'); }
+  }
+}
+$('#account-list').addEventListener('click', e => {
+  const b = e.target.closest('button[data-act]');
+  if (b && !b.disabled) listAct(b.closest('.acct').dataset.id, b.dataset.act);
+});
+$('#account-list').addEventListener('keydown', e => {
+  if (e.target.tagName !== 'INPUT' || e.key !== 'Enter' && e.key !== 'Escape') return;
+  e.preventDefault(); e.stopPropagation();
+  listAct(e.target.closest('.acct').dataset.id, e.key === 'Enter' ? 'save' : 'cancel');
+});
+
+// 추가 화면: 맨 위에 이 PC에서 찾은(아직 연결 안 된) 로그인을 한 번에 연결하게 보여 주고, 아래에서 서비스를 고르면
+// (Claude·Codex) 바로 브라우저 로그인을 띄운다. Gemini 는 고르면 바로 켠다.
+// 로그인이 안 되면 그때 '파일에서 선택'을 내놓는다. 이름은 로그인한 이메일로 들어가고, 목록에서 바꾼다.
+const SUB = { claude: 'Claude 계정', gpt: 'ChatGPT 계정', gemini: 'Antigravity 로그인' };
+const CHEV = '<svg viewBox="0 0 16 16"><path d="M6 3.5L10.5 8 6 12.5"/></svg>';
+let prov = '', loginOpts = null, loginState = '', fallback = false;
+for (const k in PROV) {
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn'; b.dataset.k = k; b.dataset.p = k;
+  b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', 'false');
+  b.style.setProperty('--brand', `var(--${k})`);
+  b.innerHTML = `<i class="sg"></i><span>${PROV[k]}</span><small>${SUB[k]}</small>${CHEV}`;
+  $('#provs').append(b);
+}
+async function loadLoginOptions() {
+  try { loginOpts = await api.login_options(); } catch { return; }
+  renderWays();
+}
+function syncProviders() {
+  const waiting = loginState === 'waiting';
+  $('#add-open').disabled = waiting;
+  for (const b of $('#provs').children) {
+    b.disabled = waiting || b.dataset.k === 'gemini' && geminiOn;
+    b.setAttribute('aria-checked', String(b.dataset.k === prov));
+    if (b.dataset.k === 'gemini') $('small', b).textContent = geminiOn ? '켜져 있음' : SUB.gemini;
+  }
+  for (const b of $('#ways').children) b.disabled = waiting;
+  for (const b of $('#found').querySelectorAll('button')) b.disabled = waiting;
+}
+// 이 PC에서 찾은 로그인: 추가 화면 맨 위 묶음과, 자세히 보기 '계정 추가' 줄의 개수
+function renderFound() {
+  const found = loginOpts ? loginOpts.found : [];
+  $('#found').replaceChildren(...found.map(f => {
+    const row = document.createElement('div'); row.className = 'found'; row.dataset.p = f.provider;
+    row.style.setProperty('--brand', `var(--${f.provider})`); row.title = f.path;
+    row.innerHTML = `<i class="sg"></i><span class="who"><b>${escapeHtml(PROV[f.provider] || f.name)}${f.email ? ` <span>· ${escapeHtml(f.email)}</span>` : ''}</b><small>${escapeHtml(f.folder)}</small></span><button class="btn solid" type="button">연결</button>`;
+    $('button', row).addEventListener('click', () => connect(f.path, f.provider));
+    return row;
+  }));
+  $('#found').hidden = $('#found-h').hidden = !found.length;
+  $('#found-n').textContent = found.length ? `${found.length}개` : '';
+  $('small', addRow).textContent = found.length ? `이 PC에서 찾은 로그인 ${found.length}개` : 'Claude · Codex · Gemini';
+}
+// 브라우저 로그인이 안 됐을 때만 보이는 다른 방법
+function renderWays() {
+  renderFound();
+  const ways = $('#ways');
+  ways.hidden = !(fallback && prov);
+  ways.replaceChildren();
+  if (ways.hidden) return syncProviders();
+  const b = document.createElement('button'); b.type = 'button'; b.className = 'btn';
+  const t = document.createElement('span'); t.textContent = '파일에서 선택'; b.append(t);
+  b.insertAdjacentHTML('beforeend', `<small></small>${CHEV}`);
+  b.addEventListener('click', async () => {
+    let path = null;
+    try { path = await api.choose_account_file(); } catch { return say('파일 선택 창을 열지 못했어요'); }
+    if (path) connect(path);
+  });
+  ways.append(b);
+  syncProviders();
+}
+function showFallback(k) {
+  prov = k; fallback = true;
+  setAdding(true);
+  renderWays();
+}
+async function connect(path, provider = prov) {
+  if (await run(() => api.add_account(provider, '', path))) { setAddOpen(false); loadLoginOptions(); }
+}
+// 추가 화면은 목록 자리를 대신한다: 제목이 '계정 추가'로 바뀌고 뒤로 버튼이 생긴다
+function setAdding(open) {
+  const panel = $('#accounts-panel');
+  panel.classList.toggle('adding', open);
+  $('#add-box').hidden = !open; $('#add-open').setAttribute('aria-expanded', String(open));
+  $('#add-back').hidden = !open; $('#panel-title').textContent = open ? '계정 추가' : '계정';
+}
+function setAddOpen(open) {
+  setAdding(open);
+  prov = ''; fallback = false; say(''); renderWays();
+  if (open) ($('#found button:not(:disabled)') || $('#provs button:not(:disabled)')).focus();
+}
+$('#add-open').addEventListener('click', () => setAddOpen($('#add-box').hidden));
+$('#add-back').addEventListener('click', async () => {
+  if (loginState === 'waiting') { await api.cancel_login(); renderLogin(null); }
+  setAddOpen(false); $('#add-open').focus();
+});
+$('#provs').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b || b.disabled || !api || busy) return;
+  const k = b.dataset.k;
+  if (k === 'gemini') { if (await run(() => api.set_gemini_enabled(true))) setAddOpen(false); return; }
+  prov = k; fallback = false; renderWays();
+  if (!await run(() => api.start_login(k, ''))) showFallback(k);
+});
+// 진행 중인 로그인: 기다리는 동안엔 대기 화면과 취소만, 끝나면 목록에 계정이 생기고 추가 화면을 닫는다
+function renderLogin(lg) {
+  const state = lg ? lg.state : '';
+  if (state === 'done') {
+    if (loginState !== 'done') { api.cancel_login(); setAddOpen(false); loadLoginOptions(); }
+    lg = null;
+  }
+  $('#login-state').hidden = !lg;
+  $('#accounts-panel').classList.toggle('waiting', !!lg && state === 'waiting');
+  if (lg) {
+    $('#login-state').className = 'login-state ' + state;
+    const chip = $('#login-chip');
+    chip.dataset.p = lg.provider; chip.style.setProperty('--brand', `var(--${lg.provider})`);
+    chip.innerHTML = `<i class="sg"></i>${escapeHtml(PROV[lg.provider] || '')}`;
+    $('#login-msg').textContent = lg.msg;
+    $('#login-cancel').textContent = state === 'waiting' ? '취소' : '닫기';
+  }
+  if (state !== loginState) {
+    loginState = state; syncProviders();
+    if (state === 'error') showFallback(lg.provider);
+  }
+}
+$('#login-cancel').addEventListener('click', async () => { await api.cancel_login(); renderLogin(null); });
+
+function setAccountsOpen(open, adding = false) {
+  body.classList.toggle('accounts-open', open); $('#accounts-panel').hidden = !open;
+  $('.foot .add').setAttribute('aria-expanded', String(open));
+  addRow.setAttribute('aria-expanded', String(open));
+  editing = confirming = ''; loginState = ''; renderList(); setAddOpen(open && adding);
+  if (open && api) loadLoginOptions();
+}
+$('.foot .add').addEventListener('click', () => setAccountsOpen(true));
+addRow.addEventListener('click', () => setAccountsOpen(true, true));
+
+// ── API 크레딧 ──
+// 카드: 남은 금액(관리자 키가 없으면 한 달 크레딧)·사라지는 날까지 남은 날·쓴 비율. 3일 안에 사라지고 5달러 이상 남았으면 '곧 사라짐'
+const money = n => '$' + (n >= 100 ? n.toFixed(0) : n.toFixed(n % 1 ? 2 : 0));
+function renderCredit(t) {
+  const c = CREDIT;
+  creditCard.hidden = !c;
+  if (!c) return;
+  const days = Math.max(0, (c.end - t) / 86400), known = c.spent != null;
+  const rest = known ? Math.max(0, c.amount - c.spent) : c.amount;
+  const end = new Date(c.end * 1000);
+  $('.cv', creditCard).textContent = money(rest);
+  $('.big small', creditCard).textContent = known ? '남음' : '/ 달';
+  $('.cdt', creditCard).textContent = days >= 1 ? `${Math.floor(days)}일 남음` : `${Math.max(1, Math.ceil(days * 24))}시간 남음`;
+  $('.cdt', creditCard).title = '이번 주기 크레딧이 사라질 때까지';
+  $('.hi', creditCard).hidden = !(days <= 3 && rest >= 5);
+  $('.cbar', creditCard).hidden = !known;
+  if (known) {
+    $('.cbar .fill', creditCard).style.width = clamp(c.spent / c.amount * 100, 0, 100) + '%';
+    $('.cbar .v', creditCard).textContent = `${money(c.spent)} / ${money(c.amount)}`;
+  }
+  $('.pill', creditCard).textContent = c.amount >= 200 ? 'Ultra' : 'Max';
+  const f2 = $('.f2', creditCard), wd = $('.wdetail', creditCard);
+  f2.textContent = `${end.getMonth() + 1}월 ${end.getDate()}일 0시에 남은 크레딧이 사라져요`;
+  wd.textContent = !c.has_key ? '관리자 키를 넣으면 쓴 금액이 보여요 · 계정 관리 → API 크레딧'
+    : known && days > 0 && rest > 0 ? `하루 ${money(rest / Math.max(days, 1))}씩 쓰면 다 써요${c.observed_at ? ` · ${hm(c.observed_at)} 확인` : ''}` : '';
+  wd.hidden = !wd.textContent;
+  const eb = $('.err', creditCard); eb.textContent = c.err || ''; eb.hidden = !c.err;
+}
+// 설정 칸: 서버 값으로 맞춘다(입력 중인 칸은 건드리지 않는다)
+function syncCreditForm() {
+  const day = $('#credit-day'), amount = cfg.credit_amount || 100;
+  if (document.activeElement !== day) day.value = cfg.credit_day ? cfg.credit_day : '';
+  for (const b of $('#credit-amount').children) b.setAttribute('aria-checked', String(+b.dataset.v === amount));
+  const saved = cfg.credit_key === true;
+  $('#credit-keyrow').hidden = saved; $('#credit-saved').hidden = !saved;
+}
+async function saveCredit(day, amount) {
+  if (!api || busy) return;
+  busy = true; say('');
+  try {
+    const r = await api.set_credit(day, amount);
+    if (r && r.error) say(r.error);
+    else { cfg.credit_day = day; cfg.credit_amount = amount; CREDIT = r || null; say(day ? `결제일 ${day}일로 저장했어요` : 'API 크레딧을 껐어요', true); }
+  } catch { say('다시 시도하세요'); } finally { busy = false; syncCreditForm(); renderCredit(Date.now() / 1000); }
+}
+$('#credit-day').addEventListener('change', e => {
+  const v = e.target.value.trim(), day = v === '' ? 0 : Number(v);
+  if (!Number.isInteger(day) || day < 0 || day > 31) { say('결제일은 1~31 사이 숫자예요(비우면 꺼져요)'); return syncCreditForm(); }
+  saveCredit(day, cfg.credit_amount || 100);
+});
+$('#credit-amount').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (b) saveCredit(cfg.credit_day || 0, +b.dataset.v);
+});
+async function saveKey(key) {
+  if (!api || busy) return;
+  busy = true; say('');
+  try {
+    const r = await api.set_credit_key(key);
+    if (r && r.error) say(r.error);
+    else { CREDIT = r || null; cfg.credit_key = !!key; say(key ? '관리자 키를 저장했어요 · 쓴 금액을 곧 불러와요' : '관리자 키를 지웠어요', true); }
+  } catch { say('다시 시도하세요'); } finally { busy = false; $('#credit-key').value = ''; syncCreditForm(); }
+}
+$('#credit-save').addEventListener('click', () => { const v = $('#credit-key').value.trim(); if (v) saveKey(v); });
+$('#credit-key').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('#credit-save').click(); } });
+$('#credit-clear').addEventListener('click', () => saveKey(''));
+$('#accounts-close').addEventListener('click', () => setAccountsOpen(false));
+
+function placeGap(u) {
+  const g = $('.b5 .gap', u.d);
+  if (u.pace == null) { g.style.width = 0; return; }
+  const a = Math.min(u.fill5, u.pace), b = Math.max(u.fill5, u.pace);
+  g.className = 'gap ' + (u.fill5 > u.pace ? 'hot' : 'cool');
+  g.style.left = a + '%'; g.style.width = (b - a) + '%';
+}
+
+function spark(k, s, v, t, f, animate) {
+  const host = $('.sp', UI[k].d);
+  if (!v.active) { host.innerHTML = ''; return; }
+  const W = 300, H = 72, T = 12, B = 16, ws = s.r5 - H5;
+  const x = tt => clamp((tt - ws) / H5, 0, 1) * W, y = u => T + (1 - clamp(u, 0, 100) / 100) * (H - T - B);
+  const pts = s.hist.filter(p => p[0] >= ws && p[0] <= t).map(p => ({ t: p[0], u: p[1] }));
+  if (!pts.length) pts.push({ t: Math.max(ws, t - 60), u: v.u5 });
+  if (pts[pts.length - 1].t < t) pts.push({ t, u: v.u5 });
+  const line = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.t).toFixed(1)},${y(p.u).toFixed(1)}`).join('');
+  const area = line + `L${x(t).toFixed(1)},${y(0)}L${x(pts[0].t).toFixed(1)},${y(0)}Z`;
+  // 공유 사용량: 이 PC 에서 쓴 몫의 누적 곡선(브랜드색). 전체 곡선과의 사이가 다른 곳
+  const sh = cfg.shared_split && s.share && s.share.h5 && s.share.h5.series || [];
+  const mp = sh.filter(p => p[0] >= ws && p[0] <= t);
+  let mineSvg = '';
+  if (mp.length) {
+    const ml = mp.map((p, i) => `${i ? 'L' : 'M'}${x(p[0]).toFixed(1)},${y(p[1]).toFixed(1)}`).join('');
+    mineSvg = `<path class="marea" d="${ml}L${x(mp[mp.length - 1][0]).toFixed(1)},${y(0)}L${x(mp[0][0]).toFixed(1)},${y(0)}Z"/><path class="mline" d="${ml}"/>`;
+  }
+  // 예상선: 리셋 전에 100%에 닿으면 그 뒤 리셋까지를 '공백' 구간으로 빗금 친다
+  let proj = '', mark = '', zone = '';
+  if (f.rate > 0) {
+    const out = f.eta && f.eta < s.r5;
+    const tEnd = out ? f.eta : s.r5, uEnd = Math.min(100, v.u5 + f.rate * (tEnd - t) / 3600);
+    proj = `<path class="proj" d="M${x(t)},${y(v.u5)}L${x(tEnd)},${y(uEnd)}"/>`;
+    if (out) {
+      const gx = x(f.eta), gw = W - gx, left = Math.max(0, s.r5 - f.eta);
+      const gl = left >= 3600 ? `${Math.floor(left / 3600)}h ${pad(Math.floor(left % 3600 / 60))}m` : `${Math.floor(left / 60)}m`;
+      zone = `<rect class="gapz" x="${gx}" y="${y(100)}" width="${gw}" height="${y(0) - y(100)}"/>
+        <path class="stuck" d="M${gx},${y(100)}L${W},${y(100)}"/>`;
+      mark = `<circle class="eta" cx="${gx}" cy="${y(100)}" r="3.5"/>
+        <text class="crit" x="${gx}" y="${y(100) - 4}" text-anchor="${gx > W - 30 ? 'end' : gx < 30 ? 'start' : 'middle'}">${hm(Math.round(f.eta / 300) * 300)}</text>`;
+      if (gw > 46) mark += `<text class="gapt" x="${gx + gw / 2}" y="${(y(100) + y(0)) / 2 + 4}" text-anchor="middle">${gl} 공백</text>`;
+    } else {
+      mark = `<text x="${W}" y="${y(uEnd) - 5}" text-anchor="end">${Math.round(uEnd)}%</text>`;
+    }
+  }
+  const nx = x(t);
+  host.innerHTML = `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="5시간 창 사용 곡선과 예상선${mineSvg ? ', 이 PC 에서 쓴 몫 곡선 포함' : ''}">
+    ${zone}<line class="grid" x1="0" x2="${W}" y1="${y(100)}" y2="${y(100)}"/><line class="grid" x1="0" x2="${W}" y1="${y(50)}" y2="${y(50)}"/><line class="grid" x1="0" x2="${W}" y1="${y(0)}" y2="${y(0)}"/>
+    <path class="pline" d="M0,${y(0)}L${W},${y(100)}"/><path class="area" d="${area}"/>${mineSvg}<path class="act" d="${line}"/>${proj}${mark}
+    <circle class="end" cx="${nx}" cy="${y(v.u5)}" r="3.5"/>
+    <text x="0" y="${H - 2}">${hm(ws)}</text><text x="${W}" y="${H - 2}" text-anchor="end">${hm(s.r5)}</text></svg>`;
+}
+
+// 오늘 실제로 시작한 사이클(채운 점)과, 이어서 시작할 수 있는 시각(빈 점)
+function cycles(k, s, v, t) {
+  const cur = v.active ? s.r5 - H5 : null;
+  const done = [...(s.starts || [])];
+  if (cur != null && !done.some(a => Math.abs(a - cur) < 900)) done.push(cur);
+  done.sort((a, b) => a - b);
+  // 하루 기준 시각(day_reset_hour)까지 시작할 수 있는 사이클. 기준을 넘더라도 다음 두 개는 늘 보여 준다
+  const end = dayEnd(t, cfg.day_reset_hour), next = planCycles(t, s.r5, v.active, cfg.day_reset_hour);
+  while (next.length < 2) next.push(next.length ? next[next.length - 1] + H5 : v.active ? s.r5 : t);
+  const shown = done.slice(-1);
+  const pts = [
+    ...shown.map(a => ({ lbl: hm(a), on: true, cur: cur != null && Math.abs(a - cur) < 900 })),
+    ...next.slice(0, 2).map((a, i) => ({ lbl: !v.active && i === 0 ? '지금' : hm(a), late: a >= end })),
+  ];
+  // 점 사이 선: 진행 중인 사이클 구간은 지난 시간만큼 채운다
+  $('.cy', UI[k].d).innerHTML = pts.map((p, i) =>
+    (i ? `<span class="ln${pts[i - 1].cur ? ' cur' : ''}"></span>` : '') +
+    `<span class="pt${p.on ? ' on' : ''}${p.cur ? ' cur' : ''}${p.late ? ' late' : ''}"${p.late ? ' title="하루 기준 시각 이후"' : ''}><i></i><b>${p.lbl}</b></span>`).join('');
+  const ln = $('.cy .ln.cur', UI[k].d); if (ln) ln.style.setProperty('--p', (v.el5 * 100).toFixed(1) + '%');
+}
+
+// 장애 배지: 계정 카드는 그 서비스(provider)의 상태를 따른다
+// 머리 줄이 좁아 배지는 두 글자로, 자세한 상태는 마우스를 올리면 보인다
+const ST_LABEL = { minor: ['장애', 'var(--warn)'], major: ['장애', 'var(--crit)'], critical: ['장애', 'var(--crit)'], maintenance: ['점검', 'var(--muted)'] };
+function renderStatus(k) {
+  const u = UI[k], st = STATUS[u.provider], lab = st && ST_LABEL[st.level];
+  for (const el of [$('.st', u.d), $('.sd', u.c)]) {
+    el.hidden = !lab;
+    if (lab) { el.style.setProperty('--stc', lab[1]); el.title = `${PROV[u.provider] || u.provider} 상태: ${st.text}`; }
+  }
+  if (lab) $('.st', u.d).textContent = lab[0];
+}
+
+// 모델별 주간 한도 같은 추가 한도
+function renderExtra(k, s, t) {
+  const host = $('.xl', UI[k].d), xs = (s.extra || []).filter(x => !x.r || x.r > t);
+  const key = JSON.stringify(xs.map(x => [x.name, Math.round(x.u), x.r]));
+  if (key === UI[k].xKey) return;
+  UI[k].xKey = key;
+  host.innerHTML = xs.map(x => `<div class="xrow" title="${escapeHtml(x.name)}${x.r ? ' · ' + dayLabel(x.r) + ' 리셋' : ''}"><span class="l">${escapeHtml(x.name)}</span>
+    <div class="bar thin"><i class="fill" style="width:${clamp(x.u, 0, 100)}%"></i></div><span class="v num">${Math.round(x.u)}%</span></div>`).join('');
+}
+
+// Claude 공유 사용량: 사용률을 내 몫·다른 곳으로 나눈 값(share)이 있으면 막대를 두 색으로 칠한다
+const PLAN_LABEL = { pro: 'Pro', max5: 'Max 5배', max20: 'Max 20배' };
+const SRC_LABEL = { base: '기본 추정', learned: '혼자 쓸 때 학습', manual: '직접 맞춤', converted: '다른 요금제 값 환산' };
+const pctText = n => n >= 1 ? String(Math.round(n)) : n > 0 ? '<1' : '0';
+function renderShare(d, share) {
+  const box = $('.shr', d);
+  if (!box) return;
+  const on = !!cfg.shared_split;
+  box.hidden = !(on && !share);  // 나누는 중일 때만 문구가 보인다
+  for (const [key, bar, name] of [['h5', $('.b5', d), '5시간'], ['week', $('.bw', d), '주간']]) {
+    const x = on && share ? share[key] : null, p = x ? clamp(x.mine, 0, 100) : 0;
+    $('.mine', bar).style.width = p + '%';
+    const mk = $('.mk', bar), L = $('.nl', bar), R = $('.nr', bar), A = $('.nm', bar), O = $('.no', bar);
+    mk.hidden = L.hidden = R.hidden = !x;
+    mk.style.left = L.style.left = R.style.left = p + '%';
+    bar.title = '';
+    if (!x) continue;
+    A.textContent = pctText(x.mine) + '%'; O.textContent = pctText(x.others) + '%';
+    // ▼ 왼쪽에 내 몫, 오른쪽에 나머지. 가장자리에서 글자가 막대 밖으로 나가면 한쪽에 모아 적는다
+    const [left, right] = p < 12 ? [[], [A, O]] : p > 88 ? [[A, O], []] : [[A], [O]];
+    L.append(...left); R.append(...right);
+    L.hidden = !left.length; R.hidden = !right.length;
+    bar.title = `${name} · ▼ 왼쪽(보라) ${pctText(x.mine)}%는 이 PC 에서 쓴 몫, 오른쪽 ${pctText(x.others)}%는 그 밖의 사용(다른 사용자·다른 기기) · 약 ${x.m.toFixed(1)}달러(API 환산), 1달러당 ${x.k.toFixed(3)}%p로 계산 · ${SRC_LABEL[x.src] || ''} · ${PLAN_LABEL[share.plan] || ''}`;
+  }
+}
+
+// 클라우드 세션 크레딧: 데이터가 없거나 기간(c.r)이 지나면 줄째로 숨긴다
+function credit(d, c, t) {
+  const row = $('.cr', d), on = !!c && (!c.r || c.r > t);
+  row.hidden = !on;
+  if (!on) return;
+  const fill = $('.bc .fill', d), used = c.used_pct != null ? clamp(c.used_pct, 0, 100) : null;
+  fill.style.width = (used ?? 0) + '%';
+  $('.vct', d).textContent = c.text || '—';
+  row.title = '클라우드 세션 크레딧' + (c.r ? ` · ${dayLabel(c.r)}까지` : '');
+}
+
+// ── render ──
+let toastTimer = 0;
+function celebrate(k) {
+  $('#toast-t').textContent = `${NAMES[k]} 5시간 한도 풀림`;
+  const toast = $('#toast'); toast.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toast.classList.remove('show'), 4000);
+  const c = UI[k].c; c.classList.remove('flash'); void c.offsetWidth; c.classList.add('flash');
+}
+
+function render(changed) {
+  const t = Date.now() / 1000;
+  DAY_HOUR = cfg.day_reset_hour ?? 6;
+  for (const k of KEYS) {
+    const s = S[k], u = UI[k], err = ERR[k];
+    renderStatus(k);
+    const st = STATUS[u.provider];
+    u.alert = !!err || !!st && st.level !== 'none' && st.level !== 'maintenance';
+    u.c.classList.toggle('off', !s);
+    $('.body', u.d).hidden = !s;
+    const stale = !!s && (!!err || s.src !== 'live' || !s.observed_at || t - s.observed_at > (cfg.stale_after || 180));
+    const age = s && s.observed_at ? `${dayLabel(s.observed_at)} 확인` : '확인 시각 없음';
+    const note = err ? `${NAMES[k]} · ${err}` : stale ? `이전 기록 · ${age}` : '';
+    const eb = $('.err', u.d); eb.hidden = !note; eb.textContent = note;
+    u.c.classList.toggle('stale', stale);
+    u.c.title = `${NAMES[k]} · ${age}${stale ? ' · 최신 사용량 확인 필요' : ''}`;
+    $('.chip .cn', u.d).textContent = (k.startsWith('account_') || CUSTOM[k] ? NAMES[k] : (s && s.plan || NAMES[k])) + (err ? ' ⚠' : '');
+    if (!s) {
+      $('.hi', u.d).hidden = $('.hd', u.c).hidden = true;
+      const pill = $('.pill', u.d); pill.textContent = err ? '오류' : '불러오는 중'; pill.style.setProperty('--pill', err ? 'var(--crit)' : 'var(--muted)');
+      $('.p', u.c).textContent = '—'; $('.p', u.d).textContent = '—'; continue;
+    }
+    const v = view(s, t), f = forecast(s, v, t), w = weekly(s, v, t);
+    // 5시간 창이 없는 계정(Claude Max): 굵은 링·큰 숫자는 주간, 가는 링은 오늘 쓸 몫을 얼마나 썼는지
+    const no5 = s.has5 === false, td = today(s, v, t);
+    // 한도 가까움(85%↑): 빨강은 이 표시에만 쓴다(막대·링은 서비스 색)
+    const hot = !stale && (v.active && v.u5 >= 85 || v.wok && v.uw >= 85);
+    if (hot) u.alert = true;
+    $('.hi', u.d).hidden = $('.hd', u.c).hidden = !hot;
+    if (!stale && prevActive[k] && !v.active) celebrate(k);
+    prevActive[k] = v.active;
+    u.pace = v.pace;
+    const dayPct = td ? clamp(td.used / Math.max(td.allow, 0.01) * 100, 0, 100) : 0;
+    u.s5.to(no5 ? v.uw : v.u5); u.sw.to(no5 ? dayPct : v.uw); placeGap(u);
+    const pct = no5 ? (v.wok ? v.uw.toFixed(0) : '—') : stale && !v.active ? '—' : v.u5.toFixed(0);
+    $('.p', u.c).textContent = pct; $('.p', u.d).textContent = pct;
+    const left = v.active ? Math.max(0, Math.floor(s.r5 - t)) : 0;
+    // 큰 숫자는 상황별로: 한도 도달 → 풀리는 시각, 소진 예정 → 소진 시각, 여유 → 리셋 때 예상 사용률.
+    // 소모 속도는 최근 측정이 15분 이상 쌓였을 때만 믿는다. 리셋 5분 전부터는 초 단위 카운트다운.
+    const cdt = $('.cdt', u.d), recent = s.hist.filter(p => t - p[0] <= 5400);
+    const sure = f.rate != null && recent.length >= 2 && recent[recent.length - 1][0] - recent[0][0] >= 900;
+    const countdown = left < 300 ? `${Math.floor(left / 60)}m ${pad(left % 60)}s`
+      : left >= 3600 ? `${Math.floor(left / 3600)}h ${pad(Math.floor(left % 3600 / 60))}m` : `${Math.floor(left / 60)}m`;
+    let big = countdown, tip = '리셋까지 남은 시간', warn = v.active && left < 300;
+    if (no5) { big = td ? td.txt : '오늘 몫 계산 중'; tip = td ? td.tip : '주간 기록이 쌓이면 오늘 쓸 몫을 계산합니다'; warn = !!td && td.over; }
+    else if (!v.active) { big = '대기'; tip = '첫 메시지부터 5시간 시작'; }
+    else if (left < 300) { /* 곧 리셋: 카운트다운 */ }
+    else if (v.u5 >= 100) { big = `${hm(s.r5)} 풀림`; tip = '한도 도달 · 풀리는 시각'; warn = true; }
+    else if (sure && f.eta && f.eta < s.r5) { big = `${hm(Math.round(f.eta / 300) * 300)} 소진`; tip = '지금 속도면 소진되는 시각'; warn = true; }
+    else if (sure && f.rate > 0) { big = `리셋 때 ${Math.min(100, Math.round(v.u5 + f.rate * left / 3600))}%`; tip = '지금 속도로 리셋 때 예상 사용률'; }
+    cdt.textContent = big; cdt.title = tip;
+    cdt.classList.toggle('urgent', warn);
+    $('.b5 .fill', u.d).style.width = v.u5 + '%'; $('.bw .fill', u.d).style.width = v.uw + '%';
+    u.fill5 = v.u5; placeGap(u);
+    const el = no5 ? v.elw : v.el5;
+    $('.pc', u.c).style.cssText = el == null ? 'opacity:0' : `transform:rotate(${el * 360}deg)`;
+    $('.b5', u.d).parentElement.hidden = no5;
+    if (no5 && !stale) u.c.title = `${NAMES[k]} · 주간 ${v.wok ? v.uw.toFixed(0) + '%' : '—'}${td ? ' · ' + td.txt : ''} · ${age}`;
+    const pb = $('.b5 .pace', u.d); pb.style.left = (v.pace ?? 0) + '%'; pb.style.opacity = v.pace == null ? 0 : 1;
+    const pw = $('.bw .pace', u.d); pw.style.left = (v.elw ?? 0) * 100 + '%'; pw.style.opacity = v.elw == null ? 0 : .7;
+    $('.vwt', u.d).textContent = v.wok ? `${v.uw.toFixed(0)}%` : '—';
+    if (k === 'claude') { credit(u.d, s.credit, t); renderShare(u.d, s.share); }
+    const pill = $('.pill', u.d); pill.textContent = s.has5 === false ? (s.hasw ? '주간' : '추가 한도 확인') : v.state[0]; pill.style.setProperty('--pill', s.has5 === false ? 'var(--muted)' : v.state[1]);
+    if (stale) { pill.textContent = '이전 기록'; pill.style.setProperty('--pill', 'var(--warn)'); }
+    u.c.classList.toggle('over', v.over); u.d.classList.toggle('over', v.over);
+    const f2 = $('.f2', u.d); f2.textContent = stale ? '주간 예측 · 최신 사용량 확인 필요' : w.txt; f2.title = stale ? '' : w.tip || ''; f2.className = 'f2' + (!stale && w.warn ? ' warn' : '');
+    const wd = $('.wdetail', u.d); wd.textContent = stale ? '' : w.detail || ''; wd.title = stale ? '' : w.tip || ''; wd.hidden = !wd.textContent;
+    renderExtra(k, s, t);
+    const minute = Math.floor(t / 60);
+    if (changed[k] || minute !== u.minute) { spark(k, s, v, t, f); u.minute = minute; }
+    const ckey = `${v.active}|${s.r5}|${(s.starts || []).join()}|${cfg.day_reset_hour}|${Math.floor(t / 60)}`;
+    if (s.has5 === false) { $('.cy', u.d).replaceChildren(); u.cyKey = ''; }
+    else if (ckey !== u.cyKey) { cycles(k, s, v, t); u.cyKey = ckey; }
+  }
+  renderCredit(t); syncCreditForm();
+  renderTabAlerts();
+  $('.ft', foot).textContent = fetchedAt ? hm(fetchedAt) : '…';
+  $('.ft', foot).title = '마지막 실시간 조회 성공 · 계정별 확인 시각은 카드에 표시';
+}
+
+// ── window size follows content ──
+let lastFit = '';
+function fit() {
+  if (!api) return;
+  const r = app.getBoundingClientRect(), w = Math.ceil(r.width), h = Math.ceil(r.height), key = w + 'x' + h;
+  if (key !== lastFit && w > 0 && h > 0) { lastFit = key; api.fit(w, h); }
+}
+new ResizeObserver(fit).observe(app);
+
+function setMode(isCompact) {
+  body.classList.toggle('compact', isCompact);
+}
+
+// ── double-click / menu ──
+document.addEventListener('dblclick', e => {
+  if (body.classList.contains('menu') || body.classList.contains('welcome') || e.target.closest('button, input, select, #accounts-panel, #welcome')) return;
+  // 더블클릭한 자리에 띄운다. 자리를 먼저 알린 뒤에 보기를 바꾼다: 크기 요청이 먼저 가면 창이 옛 자리에서 한 번 커졌다가 옮겨 간다
+  cfg.compact = !cfg.compact;
+  if (api) api.set_compact(cfg.compact, true).then(() => setMode(cfg.compact), () => setMode(cfg.compact));
+  else setMode(cfg.compact);
+});
+// QR 코드: 폰 카메라가 읽게 테마와 상관없이 흰 바탕에 검은 칸, 둘레에 4칸 여백
+function qrSvg(rows) {
+  const n = rows.length + 8; let d = '';
+  rows.forEach((row, y) => { for (let x = 0; x < row.length; x++) if (row[x] === '1') d += `M${x + 4} ${y + 4}h1v1h-1z`; });
+  return `<svg viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges"><rect width="${n}" height="${n}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+}
+function syncMenu() {
+  for (const key of ['compact', 'topmost', 'startup']) $(`#menu [data-act="${key}"]`).setAttribute('aria-checked', String(!!cfg[key]));
+  if (cfg.mac) $('#menu [data-act="startup"] span').textContent = '로그인 시 실행';
+  if (cfg.packaged) $('#menu [data-act="startup"] span').textContent = '시작 앱 설정 열기';
+  for (const b of document.querySelectorAll('#menu [data-act="theme"]')) b.setAttribute('aria-checked', String(b.dataset.v === (cfg.theme || 'auto')));
+  $('#menu [data-act="share"]').setAttribute('aria-checked', String(!!cfg.shared_split));
+  for (const el of document.querySelectorAll('#menu [data-share-only]')) el.hidden = !cfg.shared_split;
+  for (const b of document.querySelectorAll('#menu [data-act="share-plan"]')) b.setAttribute('aria-checked', String(b.dataset.v === (cfg.share_plan || 'auto')));
+  // 사이클 예약: 켜면 시각을 적는 칸이 보인다
+  $('#menu [data-act="cycle"]').setAttribute('aria-checked', String(!!cfg.cycle_start));
+  $('#cycle-row').hidden = !cfg.cycle_start;
+  const cl = S[WORK.claude || 'claude'];  // 사이클 예약은 작업 계정으로 보낸다
+  $('#cycle-l').hidden = !(cfg.cycle_start && cl && cl.has5 === false);
+  if (document.activeElement !== $('#cycle-times')) $('#cycle-times').value = (cfg.cycle_times || []).join(', ');
+  $('#menu [data-act="boot"]').setAttribute('aria-checked', String(!!cfg.boot_start));
+  // 폰에서 보기: 켜면 폰에서 열 주소(없으면 안내 문구)를 보여 준다
+  $('#menu [data-act="remote"]').setAttribute('aria-checked', String(!!cfg.remote_view));
+  $('#remote-l').hidden = !cfg.remote_view; $('#remote-l').textContent = cfg.remote_url || cfg.remote_msg || '';
+  $('#menu [data-act="remote-copy"]').hidden = !(cfg.remote_view && cfg.remote_url);
+  const qr = cfg.remote_view && cfg.remote_url && cfg.remote_qr || [];
+  $('#remote-qr').hidden = !qr.length; $('#remote-qr').innerHTML = qr.length ? qrSvg(qr) : '';
+}
+// '나만 썼어요' 결과는 메뉴 줄에 잠깐 보인다(간단히 보기에서는 카드가 없다). 자세한 문구는 마우스를 올리면 보인다.
+let soloTimer = 0;
+function soloResult(r) {
+  const l = $('#solo-l'); l.textContent = r.ok ? '맞췄어요' : '맞출 수 없어요'; l.title = r.msg;
+  clearTimeout(soloTimer); soloTimer = setTimeout(() => { l.textContent = '나만 썼어요'; l.title = ''; }, 4000);
+}
+// 메뉴는 위젯 위에 뜨는 팝업이다. 자세히 보기는 누른 자리에, 간단히 보기는 링 바로 아래에 띄운다.
+// 창이 메뉴보다 작으면(간단히 보기) 메뉴가 들어갈 만큼만 잠시 늘리고, 창이 붙어 있는 쪽 가장자리는 그대로 둔다.
+let menuAt = null;  // 메뉴를 띄운 자리(높이가 달라져 다시 띄울 때 쓴다)
+function openMenu(e) {
+  menuAt = e;
+  syncMenu();
+  const box = app.getBoundingClientRect(), cw = box.width, ch = box.height, m = 4;
+  body.classList.add('menu');
+  const menu = $('#menu'), mw = menu.offsetWidth, mh = menu.offsetHeight;
+  let x, y;
+  if (cfg.compact) { x = cfg.east ? Math.max(cw, mw) - mw : 0; y = ch; }
+  else {
+    x = clamp(e ? e.clientX : m, m, Math.max(m, cw - mw - m));
+    y = clamp(e ? e.clientY : m, m, Math.max(m, ch - mh - m));
+  }
+  const w = Math.max(cw, x + mw), h = Math.max(ch, y + mh + (cfg.compact ? 0 : m));
+  menu.style.left = x + 'px'; menu.style.top = y + 'px';
+  menu.style.setProperty('--ox', (e ? clamp(e.clientX - x, 0, mw) : 0) + 'px');
+  menu.style.setProperty('--oy', (e ? clamp(e.clientY - y, 0, mh) : 0) + 'px');
+  app.style.minWidth = w + 'px'; app.style.minHeight = h + 'px';
+  if (cfg.compact && cfg.east && w > cw) compact.style.marginLeft = (w - cw) + 'px';  // 링이 제자리에 있게
+  $('#menu button').focus({ preventScroll: true });
+}
+function closeMenu() {
+  if (!body.classList.contains('menu')) return;
+  body.classList.remove('menu');
+  app.style.minWidth = app.style.minHeight = compact.style.marginLeft = '';
+}
+document.addEventListener('contextmenu', e => { e.preventDefault(); if (body.classList.contains('welcome')) return; body.classList.contains('menu') ? closeMenu() : openMenu(e); });
+$('#scrim').addEventListener('click', closeMenu);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeMenu(); setAccountsOpen(false); } });
+window.addEventListener('blur', closeMenu);
+$('#menu').addEventListener('click', async e => {
+  const b = e.target.closest('button'); if (!b || !api) return;
+  const act = b.dataset.act;
+  if (act === 'refresh') api.refresh();
+  else if (act === 'accounts') { closeMenu(); setAccountsOpen(true); return; }
+  else if (act === 'insights') api.open_insights();
+  else if (act === 'compact') { cfg.compact = !cfg.compact; api.set_compact(cfg.compact); }
+  else if (act === 'topmost') cfg.topmost = await api.toggle_topmost();
+  else if (act === 'startup') cfg.startup = await api.toggle_startup();
+  else if (act === 'share') { cfg.shared_split = await api.toggle_shared_split(); closeMenu(); setMode(cfg.compact); return; }  // 메뉴 높이가 달라져서 닫는다
+  else if (act === 'share-plan') { cfg.share_plan = b.dataset.v; api.set_share_plan(cfg.share_plan); return syncMenu(); }
+  else if (act === 'share-solo') { soloResult(await api.calibrate_share(b.dataset.v)); return; }
+  else if (act === 'share-reset') { await api.reset_share_calibration(); soloResult({ ok: true, msg: '직접 맞춘 값을 지웠어요' }); return; }
+  else if (act === 'cycle') { const at = menuAt; cfg.cycle_start = await api.toggle_cycle_start(); closeMenu(); openMenu(at); if (cfg.cycle_start) $('#cycle-times').focus(); return; }
+  else if (act === 'boot') cfg.boot_start = await api.toggle_boot_start();
+  else if (act === 'remote') {  // 주소 줄이 생기거나 없어져 메뉴 높이가 달라진다: 같은 자리에 다시 띄운다
+    const r = await api.toggle_remote_view(), at = menuAt;
+    cfg.remote_view = r.on; cfg.remote_url = r.url; cfg.remote_qr = r.qr; cfg.remote_msg = r.msg;
+    closeMenu(); openMenu(at); return;
+  }
+  else if (act === 'remote-copy') {
+    const l = b.querySelector('span');
+    try { await navigator.clipboard.writeText(cfg.remote_url); l.textContent = '복사했어요'; }
+    catch (err) { l.textContent = '복사 실패 · 주소를 직접 입력하세요'; }
+    setTimeout(() => { l.textContent = '주소 복사'; }, 3000); return;
+  }
+  else if (act === 'quit') return api.quit();
+  else if (act === 'theme') { cfg.theme = b.dataset.v; applyTheme(cfg.theme); api.set_theme(cfg.theme); return syncMenu(); }  // 메뉴는 열어 둔 채 바로 보이게
+  closeMenu(); setMode(cfg.compact);
+});
+
+// 예약 시각은 칸을 벗어나거나 Enter 를 누르면 저장하고, 받아들여진 시각으로 다시 적는다
+$('#cycle-times').addEventListener('change', async e => { if (!api) return; cfg.cycle_times = await api.set_cycle_times(e.target.value); e.target.value = cfg.cycle_times.join(', '); });
+$('#cycle-times').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+
+// ── 처음 실행 안내 ──
+// 설정 파일이 없던 첫 실행(cfg.onboarded === false)에만 뜬다. 고른 대로 한 번에 적용하거나 건너뛴다
+let welcomeState = '';  // '' 아직 안 띄움 · 'open' · 'done'
+function welcomeRow(p, title, sub, right) {
+  const r = document.createElement('div'); r.className = 'wrow'; r.dataset.p = p; r.style.setProperty('--brand', `var(--${p})`);
+  r.innerHTML = `<i class="sg"></i><span><b></b><small></small></span>${right}`;
+  $('b', r).textContent = title; $('small', r).textContent = sub; $('small', r).hidden = !sub;
+  return r;
+}
+async function openWelcome() {
+  welcomeState = 'open'; body.classList.add('welcome'); $('#welcome').hidden = false;
+  let W;
+  try { W = await api.welcome(); } catch { W = null; }
+  W = W || { base: [], found: [], startup: null, packaged: false, mac: false };
+  const base = W.base || [];
+  $('#w-base').replaceChildren(...base.map(b => welcomeRow(b.key, PROV[b.key] || b.name,
+    b.found ? b.email || '로그인돼 있어요' : '로그인이 없어요 · 나중에 계정 추가에서 연결', b.found ? '<em class="ok">찾음</em>' : '<em>없음</em>')));
+  if (!base.length) $('#w-base').innerHTML = '<div class="wrow"><span>로그인을 확인하지 못했어요</span></div>';
+  const found = W.found || [];
+  $('#w-found').replaceChildren(...found.map(f => {
+    const r = welcomeRow(f.provider, `${PROV[f.provider] || f.name}${f.email ? ' · ' + f.email : ''}`, f.folder, '<input type="checkbox" class="sw" checked>');
+    const box = $('input', r); box.dataset.path = f.path; box.dataset.provider = f.provider;
+    box.setAttribute('aria-label', `${f.email || f.folder} 연결`);
+    r.addEventListener('click', e => { if (e.target !== box) box.click(); });
+    return r;
+  }));
+  $('#w-found').hidden = $('#w-found-h').hidden = !found.length;
+  $('#w-found-n').textContent = found.length ? `${found.length}개` : '';
+  $('#w-startup-row').hidden = !!W.packaged;  // 스토어 설치본은 윈도우 설정에서 켠다
+  $('#w-startup-t').textContent = W.mac ? '로그인 시 실행' : '윈도우 시작 시 실행';
+}
+let welcomeBusy = false;
+async function finishWelcome(apply) {
+  if (welcomeBusy) return;
+  welcomeBusy = true; $('#w-go').disabled = $('#w-skip').disabled = true; $('#w-msg').textContent = '';
+  const choice = apply ? {
+    accounts: [...$('#w-found').querySelectorAll('input:checked')].map(b => ({ provider: b.dataset.provider, path: b.dataset.path })),
+    gemini: $('#w-gemini').checked, startup: $('#w-startup').checked && !$('#w-startup-row').hidden, alerts: $('#w-alerts').checked } : null;
+  let r;
+  try { r = await api.finish_welcome(choice); } catch { r = null; }
+  welcomeBusy = false; $('#w-go').disabled = $('#w-skip').disabled = false;
+  if (!r || r.error) { $('#w-msg').textContent = (r && r.error) || '다시 시도하세요'; return; }
+  welcomeState = 'done'; cfg.onboarded = true;
+  body.classList.remove('welcome'); $('#welcome').hidden = true;
+  if (r.failed && r.failed.length) { setAccountsOpen(true); say(r.failed[0]); }
+}
+$('#w-go').addEventListener('click', () => finishWelcome(true));
+$('#w-skip').addEventListener('click', () => finishWelcome(false));
+
+// ── data ──
+const sig = {};
+async function poll() {
+  let st;
+  try { st = await api.state(); } catch (e) { return; }
+  syncAccounts(st);
+  if (body.classList.contains('accounts-open')) renderLogin(st.login);
+  const changed = {};
+  for (const k of KEYS) {
+    const s = st.svc[k] || null, key = s ? `${s.u5}|${s.r5}|${s.uw}|${s.hist.length}` : '';
+    changed[k] = key !== sig[k]; sig[k] = key;
+    S[k] = s; ERR[k] = st.err[k] || null;
+  }
+  fetchedAt = st.fetched_at; STATUS = st.status || {}; CREDIT = st.credit || null;
+  const upd = $('.upd', foot); upd.hidden = !st.update; upd.textContent = st.update ? `새 버전 ${st.update}` : '';
+  if (!body.classList.contains('menu')) { cfg = st.cfg; setMode(cfg.compact); applyTheme(cfg.theme); }
+  if (cfg.onboarded === false && !welcomeState) openWelcome();
+  applyHidden();
+  render(changed);
+}
+waitApi().then(a => { api = a; fit(); poll(); setInterval(poll, 1000); });
+render({});
+})();
+</script>
+</body>
+</html>

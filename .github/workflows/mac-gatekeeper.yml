@@ -1,0 +1,46 @@
+# 사용자가 받는 그대로의 맥 릴리스를 점검한다(진짜 로그인 정보는 쓰지 않는다).
+# 1) 브라우저로 받은 것처럼 격리 표시를 붙여 서명·Gatekeeper 판정을 기록  2) install.sh 로 설치해 바로 실행되는지
+name: mac-gatekeeper
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  mac:
+    runs-on: macos-latest  # Apple Silicon
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: sw_vers
+
+      - name: 1. 브라우저 다운로드처럼 (격리 표시)
+        run: |
+          curl -fL -o app.zip "https://github.com/daowle/Quota-Tank/releases/latest/download/QuotaTank-mac-arm64.zip"
+          ditto -x -k app.zip x
+          xattr -w com.apple.quarantine "0081;$(printf %x "$(date +%s)");Safari;" x/QuotaTank.app
+          echo "## 서명" | tee -a "$GITHUB_STEP_SUMMARY"
+          { codesign --verify --deep --strict --verbose=4 x/QuotaTank.app 2>&1 || true; } | tee -a "$GITHUB_STEP_SUMMARY"
+          { codesign -dvv x/QuotaTank.app 2>&1 | grep -E "Signature|Identifier|Format|Sealed|flags" || true; } | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "## Gatekeeper" | tee -a "$GITHUB_STEP_SUMMARY"
+          { spctl -a -vv -t exec x/QuotaTank.app 2>&1 || true; } | tee -a "$GITHUB_STEP_SUMMARY"
+          { syspolicy_check distribution x/QuotaTank.app 2>&1 || true; } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: 2. install.sh 로 설치하고 실행
+        run: |
+          QUOTATANK_DIR="$HOME/Applications" bash install.sh
+          APP="$HOME/Applications/QuotaTank.app"
+          if xattr -p com.apple.quarantine "$APP" 2>/dev/null; then echo "격리 표시가 남아 있다"; exit 1; fi
+          sleep 10
+          pgrep -x QuotaTank
+          echo "✅ install.sh: 격리 표시 없음, 실행 중(pid $(pgrep -x QuotaTank | head -1))" >> "$GITHUB_STEP_SUMMARY"

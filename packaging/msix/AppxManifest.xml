@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- tools/build_msix.py 가 {{...}} 를 채운다. Publisher 는 서명 인증서의 주체(Subject)와 글자 하나까지 같아야 설치된다. -->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap10="http://schemas.microsoft.com/appx/manifest/uap/windows10/10"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap uap10 desktop rescap">
+
+  <Identity Name="QuotaTank" Publisher="{{PUBLISHER}}" Version="{{VERSION}}" ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>QuotaTank</DisplayName>
+    <PublisherDisplayName>{{PUBLISHER_NAME}}</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+    <!-- 설치 후 파일이 바뀌거나 깨지면 실행 전에 윈도우가 막고 복구한다 (Windows 10 2004+) -->
+    <uap10:PackageIntegrity>
+      <uap10:Content Enforcement="on" />
+    </uap10:PackageIntegrity>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="ko-KR" />
+  </Resources>
+
+  <Applications>
+    <Application Id="QuotaTank" Executable="QuotaTank.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="QuotaTank" Description="Claude · Codex · Gemini 사용 한도 위젯"
+        BackgroundColor="transparent" Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+      <Extensions>
+        <!-- 시작 프로그램 폴더 대신 이것을 쓴다. 사용자가 설정 > 앱 > 시작 프로그램에서 켠다 -->
+        <desktop:Extension Category="windows.startupTask" Executable="QuotaTank.exe" EntryPoint="Windows.FullTrustApplication">
+          <desktop:StartupTask TaskId="QuotaTankStartup" Enabled="false" DisplayName="QuotaTank" />
+        </desktop:Extension>
+      </Extensions>
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <!-- 일반 데스크톱 앱 권한: 홈 폴더의 로그인 파일 읽기, 자격 증명 관리자, 트레이, CLI 로그인 창 띄우기 -->
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

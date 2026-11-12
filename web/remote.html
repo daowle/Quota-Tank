@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>QuotaTank</title>
+<link rel="icon" href="icon.ico">
+<link rel="stylesheet" href="common.css">
+<style>
+/* 폰에서 보기: PC 위젯이 가진 값을 읽기만 한다. 묶음 폰트(2MB)는 받지 않고 폰의 기본 글꼴을 쓴다. */
+:root { --f: -apple-system, "Segoe UI", Roboto, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif; }
+body { background: var(--bg); font-size: 15px; user-select: auto; -webkit-text-size-adjust: 100%;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+main, #cards { display: grid; gap: 12px; }
+main { max-width: 520px; margin: 0 auto; }
+#cards.lost { opacity: .55; }
+h1 { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.card { background: var(--subtle); border-radius: 14px; padding: 14px 16px; }
+.card.stale { outline: 1px dashed var(--warn); outline-offset: -1px; }
+.card header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.card h2 { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 17px; font-weight: 600; letter-spacing: -.01em; overflow-wrap: anywhere; }
+.card h2 .sg { width: 16px; height: 16px; border-radius: 5px; }
+/* 한도 가까움(85%↑): 이름 옆 빨간 점 + 짧은 글자. 빨강은 이 표시에만 쓴다 */
+.hi { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--crit); white-space: nowrap; }
+.hi::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--crit); }
+.st { font-size: 12px; font-weight: 500; white-space: nowrap; color: var(--muted); padding: 1px 8px; border-radius: 99px; background: var(--track); }
+.row { display: flex; align-items: center; gap: 10px; }
+.row + .sub { margin: 4px 0 0; }
+.k { flex: none; width: 3.2em; font-size: 13px; color: var(--muted); }
+.v { flex: none; width: 3em; text-align: right; font-size: 17px; font-weight: 600; }
+.bar { position: relative; flex: 1; height: 8px; border-radius: 99px; background: var(--track); }
+.bar i { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--fill); }
+.bar b { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; border-radius: 1px; background: var(--pace); }
+.sub { font-size: 12.5px; }
+.fc { margin: 2px 0 0; font-size: 13.5px; }
+.fc.warn, .err { color: var(--crit); }
+.gap { height: 12px; }
+.err { margin: 8px 0 0; font-size: 13px; overflow-wrap: anywhere; }
+.note { margin: 0; font-size: 12.5px; color: var(--muted); text-align: center; }
+#reload { margin-left: 6px; padding: 5px 12px; border: 0; border-radius: 99px; background: var(--fg); color: var(--inv); font: inherit; font-weight: 600; }
+#reload:disabled { opacity: .5; }
+#lost { margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 13.5px; color: var(--crit); background: var(--crit-bg); border: 1px solid var(--crit-line); }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>QuotaTank · 폰에서 보기</h1>
+  <p id="lost" role="alert" hidden>PC 에 연결할 수 없어요 · PC 의 위젯과 Tailscale 이 켜져 있는지 확인하세요</p>
+  <div id="cards"></div>
+  <p class="note"><span id="note">불러오는 중</span><button id="reload" type="button">새로고침</button></p>
+</main>
+<script src="common.js"></script>
+<script>
+(() => {
+const KINDS = ['claude', 'gpt', 'gemini'];  // 서비스 색(--claude·--gpt·--gemini)이 있는 카드 종류
+let st = null, got = 0, lost = false;
+
+const bar = (u, el) => `<div class="bar"><i style="width:${clamp(u, 0, 100).toFixed(1)}%"></i>${el == null ? '' : `<b style="left:${(clamp(el, 0, 1) * 100).toFixed(1)}%"></b>`}</div>`;
+
+function card(c, t) {
+  const kind = KINDS.includes(c.kind) ? c.kind : '';
+  const open = extra => `<section class="card${extra}"${kind ? ` data-p="${kind}" style="--brand:var(--${kind})"` : ''}>`;
+  const head = (state, hot) => `<header><h2>${kind ? '<i class="sg"></i>' : ''}${escapeHtml(c.name)}${hot ? '<span class="hi">한도 가까움</span>' : ''}</h2>${state ? `<span class="st">${state[0]}</span>` : ''}</header>`;
+  const err = c.err ? `<p class="err">${escapeHtml(c.err)}</p>` : '';
+  if (c.u5 == null) return `${open('')}${head()}<p class="sub">아직 받은 값이 없어요</p>${err}</section>`;
+  const stale = c.src !== 'live' || !c.observed_at || t - c.observed_at > st.stale_after;
+  const v = view(c, t), f = forecast(c, v, t), w = weekly(c, v, t);
+  const line = x => `<p class="fc${x.warn ? ' warn' : ''}">${escapeHtml(x.txt)}</p>`;
+  const no5 = c.has5 === false;  // 5시간 창이 없는 계정(Claude Max 등): 주간만 보여 준다
+  const hot = !stale && (v.active && v.u5 >= 85 || v.wok && v.uw >= 85);
+  return `${open(stale ? ' stale' : '')}${head(stale ? ['이전 기록'] : no5 ? ['주간'] : v.state, hot)}
+    ${no5 ? '<p class="sub">5시간 한도 없음 · 주간 한도만 있어요</p>' : `<div class="row"><span class="k">5시간</span>${bar(v.u5, v.el5)}<span class="v num">${v.u5.toFixed(0)}%</span></div>
+    <p class="sub">${v.active ? `${hm(c.r5)} 리셋 · ${durShort(c.r5 - t)} 남음` : '쉬는 중'}</p>
+    ${stale ? '' : line(f)}`}
+    <div class="gap"></div>
+    <div class="row"><span class="k">주간</span>${bar(v.uw, v.elw)}<span class="v num">${v.uw.toFixed(0)}%</span></div>
+    <p class="sub">${v.wok ? `${dayLabel(c.rw)} 리셋 · ${durShort(c.rw - t)} 남음` : '주간 창 정보 없음'}</p>
+    ${stale || !v.wok ? '' : line(w) + (w.detail ? `<p class="sub">${escapeHtml(w.detail)} · 이번 주 평균 기준</p>` : '')}
+    ${stale && c.observed_at ? `<p class="sub">PC 위젯이 ${dayLabel(c.observed_at)}에 확인한 값이에요</p>` : ''}${err}</section>`;
+}
+
+function render() {
+  $('#lost').hidden = !lost;
+  if (!st) { $('#note').textContent = lost ? '' : '불러오는 중'; return; }
+  const t = Date.now() / 1000;
+  DAY_HOUR = Number.isInteger(st.day_hour) ? st.day_hour : 6;  // 오늘 쓸 몫을 새로 계산하는 시각(PC 설정)
+  $('#cards').innerHTML = st.cards.length ? st.cards.map(c => card(c, t)).join('') : '<p class="note">PC 위젯에 보이는 서비스가 없어요</p>';
+  $('#cards').classList.toggle('lost', lost);
+  $('#note').textContent = `${hm(got)}에 PC 에서 받은 값 · 당기면 새로 받아요`;
+}
+
+// 열 때와 다시 화면에 띄울 때 한 번 받는다. 그 뒤로는 당겨서 새로고침(브라우저가 페이지를 다시 연다)이나 새로고침 단추로 받는다.
+// 받는다고 서비스에 새 조회가 나가지는 않는다: PC 위젯이 이미 가진 값이다
+async function load() {
+  $('#reload').disabled = true;
+  try {
+    const r = await fetch('state.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status);
+    const next = await r.json();
+    if (!Array.isArray(next.cards)) throw new Error('shape');
+    st = next; got = Date.now() / 1000; lost = false;
+  } catch (e) { lost = true; }
+  $('#reload').disabled = false;
+  render();
+}
+load();
+$('#reload').addEventListener('click', load);
+setInterval(render, 15000);  // 남은 시간 문구
+document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
+})();
+</script>
+</body>
+</html>

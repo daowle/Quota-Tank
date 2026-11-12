@@ -1,0 +1,17 @@
+__pycache__/
+*.py[cod]
+.venv*/
+.DS_Store
+build/
+dist/
+auth.json
+.credentials.json
+.build-wheels/
+audit-windows.json
+requirements-audit.txt
+
+# 개인 Claude Code 설정
+.claude/settings.local.json
+promo/
+.sites/
+.vscode/

@@ -1,0 +1,72 @@
+/* 공통 토큰 · 폰트 · 숫자 롤링. main.html / insights.html / remote.html 이 함께 쓴다.
+   바탕·글자·선·버튼은 무채색(검정·흰색·중립 회색)만 쓰고, 색은 어느 서비스인지 알려 주는 곳
+   (링·막대·큰 숫자·작은 표식)에만 Claude 테라코타 · Codex 청록 · Gemini 파랑→보라로 넣는다.
+   빨강(--crit)은 한도 가까움·오류 표시에만 쓴다. */
+@font-face {
+  font-family: "Pretendard Variable";
+  src: url("fonts/PretendardVariable.woff2") format("woff2-variations");
+  font-weight: 45 920;
+  font-display: block;
+}
+:root {
+  /* --bg: 창 바탕, --subtle: 카드·묶음 바탕(iOS 묶음 목록처럼 바탕보다 한 단계 밝다) */
+  --bg: #000000; --subtle: #1c1c1e; --fg: #ffffff; --muted: #98989d; --faint: #636366; --line: #38383a; --track: #2c2c2e;
+  --hover: rgba(255,255,255,.07); --inv: #000000;
+  --mine: #a78bfa; --ok: #30d158; --warn: #ff9f0a; --crit: #ff453a; --accent: #ffffff;
+  --accent-bg: rgba(255,255,255,.10); --accent-line: rgba(255,255,255,.32); --crit-bg: rgba(255,69,58,.14); --crit-line: rgba(255,69,58,.45);
+  --h0: #1c1c1e; --h1: #3a3a3c; --h2: #636366; --h3: #aeaeb2; --h4: #ffffff;
+  --claude: #e58b6c; --gpt: #30c79d; --gemini: #6f97ff; --gemini2: #b28dff;
+  /* 링 위 시간 눈금 · 막대의 페이스 표시 */
+  --mark: #d1d1d6; --mark-glow: .35; --pace: #d1d1d6;
+  --f: "Pretendard Variable", Pretendard, -apple-system, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", "Malgun Gothic", sans-serif;
+  color-scheme: dark;
+}
+/* 테마: data-theme 없음 = 시스템 설정(auto), "light"/"dark" = 고정 */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #f5f5f7; --subtle: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --faint: #a1a1a6; --line: #d2d2d7; --track: #e8e8ed;
+    --hover: rgba(0,0,0,.04); --inv: #ffffff;
+    --mine: #6d4fd8; --ok: #248a3d; --warn: #b25000; --crit: #d70015; --accent: #1d1d1f;
+    --accent-bg: rgba(0,0,0,.06); --accent-line: rgba(0,0,0,.28); --crit-bg: rgba(215,0,21,.08); --crit-line: rgba(215,0,21,.35);
+    --h0: #e8e8ed; --h1: #c7c7cc; --h2: #8e8e93; --h3: #48484a; --h4: #1d1d1f;
+    --claude: #cf6a45; --gpt: #0f9d7a; --gemini: #4e7cf6; --gemini2: #9b6cf0;
+    --mark: #ffffff; --mark-glow: .9; --pace: #1d1d1f; color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #f5f5f7; --subtle: #ffffff; --fg: #1d1d1f; --muted: #6e6e73; --faint: #a1a1a6; --line: #d2d2d7; --track: #e8e8ed;
+  --hover: rgba(0,0,0,.04); --inv: #ffffff;
+  --mine: #6d4fd8; --ok: #248a3d; --warn: #b25000; --crit: #d70015; --accent: #1d1d1f;
+  --accent-bg: rgba(0,0,0,.06); --accent-line: rgba(0,0,0,.28); --crit-bg: rgba(215,0,21,.08); --crit-line: rgba(215,0,21,.35);
+  --h0: #e8e8ed; --h1: #c7c7cc; --h2: #8e8e93; --h3: #48484a; --h4: #1d1d1f;
+  --claude: #cf6a45; --gpt: #0f9d7a; --gemini: #4e7cf6; --gemini2: #9b6cf0;
+  --mark: #ffffff; --mark-glow: .9; --pace: #1d1d1f; color-scheme: light;
+}
+/* 서비스 색: --brand 는 단색(선·점), --fill 은 칠하는 곳(막대·큰 숫자). Gemini 만 파랑→보라 그라데이션 */
+[data-p] { --fill: var(--brand); }
+[data-p="gemini"] { --fill: linear-gradient(100deg, var(--gemini), var(--gemini2)); }
+/* 서비스 표식: 둥근 사각형 + 흰 도형(Claude 점 · Codex 고리 · Gemini 마름모). 실제 로고가 아닌 추상 기호 */
+.sg { width: 14px; height: 14px; border-radius: 4px; background: var(--fill, var(--brand)); flex: none; display: inline-grid; place-items: center; }
+.sg::after { content: ""; width: 5px; height: 5px; background: #fff; border-radius: 50%; }
+[data-p="gpt"] .sg::after { width: 6px; height: 6px; background: none; border: 1.5px solid #fff; box-sizing: border-box; }
+[data-p="gemini"] .sg::after { width: 5px; height: 5px; border-radius: 1px; transform: rotate(45deg); }
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font: 13px/1.45 var(--f); color: var(--fg); -webkit-font-smoothing: antialiased; user-select: none; }
+.num, .tk { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.sub { font-size: 11px; color: var(--muted); }
+.cl { color: var(--claude); font-weight: 600; }
+.cx { color: var(--gpt); font-weight: 600; }
+.gm { color: var(--gemini); font-weight: 600; }
+.lbl-sm { font-size: 12px; font-weight: 600; color: var(--fg); }
+
+/* 숫자 롤링 (Ticker) */
+.tk { display: inline-flex; line-height: 1; height: 1em; overflow: hidden; vertical-align: -0.1em; }
+.tk .col { display: flex; flex-direction: column; transition: transform .55s cubic-bezier(.2,1.25,.35,1); }
+.tk .col span, .tk .ch { height: 1em; line-height: 1; display: block; }
+
+@keyframes segin { from { transform: scaleX(.2); opacity: .3; } }
+@keyframes draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* Cached readings must be distinguishable in compact mode, too. */
+.cmp.stale { opacity: .65; outline: 1px dashed var(--warn); outline-offset: -1px; }

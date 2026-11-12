@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(python -m unittest *)",
+      "Bash(python3 -m unittest *)",
+      "Bash(.venv-release/Scripts/python -m unittest *)",
+      "Bash(.venv-release/Scripts/python tools/smoke_webview.py *)",
+      "Bash(.venv-release/Scripts/python tools/check_bundle.py *)",
+      "Bash(.venv-release/Scripts/python -m PyInstaller widget.spec *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)"
+    ],
+    "deny": [
+      "Read(~/.claude/.credentials.json)",
+      "Read(~/.claude-*/.credentials.json)",
+      "Read(~/.codex/auth.json)",
+      "Read(~/.codex-*/auth.json)",
+      "Read(~/AppData/Roaming/AIUsageWidget/**)",
+      "Read(~/AppData/Roaming/QuotaTank/**)",
+      "Read(~/Library/Application Support/AIUsageWidget/**)",
+      "Read(~/Library/Application Support/QuotaTank/**)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(git push)",
+      "PowerShell(git push *)",
+      "Bash(git reset --hard *)",
+      "Bash(git branch -D *)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell|Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_secrets.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_secrets.py\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_publish.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_publish.py\"",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$CLAUDE_PROJECT_DIR/.claude/hooks/run_tests.py\" || python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/run_tests.py\"",
+            "timeout": 180
+          }
+        ]
+      }
+    ]
+  }
+}

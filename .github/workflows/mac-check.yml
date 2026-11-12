@@ -1,0 +1,149 @@
+# 맥 실제 실행 점검 (맥이 없어도 GitHub 의 macOS 러너에서 확인한다). 진짜 로그인 정보는 쓰지 않는다: HOME 을 빈 임시 폴더로 바꾼다.
+# 1) install_mac.sh 그대로 설치  2) 단위 테스트  3) WKWebView 스모크(가짜 데이터)  4) 로그인 AppleScript 컴파일
+# 5) 소스로 위젯 실행 → 살아 있는지·화면 캡처·두 번째 실행으로 꺼지는지  6) PyInstaller .app 으로 같은 확인
+# 결과: 실행 요약(Summary) + mac-check 아티팩트(스크린샷·로그)
+name: mac-check
+
+on:
+  push:
+    paths:
+      - "widget.py"
+      - "hardening.py"
+      - "provider_worker.py"
+      - "share.py"
+      - "qr.py"
+      - "providers/**"
+      - "web/**"
+      - "install_mac.sh"
+      - "requirements*.txt"
+      - "widget.spec"
+      - "tools/smoke_webview.py"
+      - ".github/workflows/mac-check.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 지정하면 pipefail 이 켜진다(| tee 뒤에서도 실패를 잡는다)
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  mac:
+    runs-on: macos-latest  # Apple Silicon
+    timeout-minutes: 25
+    env:
+      OUT: ${{ github.workspace }}/mac-check
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - run: mkdir -p "$OUT"; sw_vers | tee "$OUT/sw_vers.txt"
+
+      - name: 1. install_mac.sh
+        run: |
+          bash install_mac.sh 2>&1 | tee "$OUT/install.log"
+          test -x .venv-mac/bin/python
+          test -d "$HOME/Applications/QuotaTank.app"
+          .venv-mac/bin/python -c "import webview, pystray, PIL, AppKit, WebKit; print('imports ok', webview.__file__)"
+          echo "✅ install_mac.sh: $(.venv-mac/bin/python --version), 앱 아이콘 생성" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 2. 단위 테스트
+        run: |
+          .venv-mac/bin/python -m unittest discover -s tests 2>&1 | tee "$OUT/unittest.log"
+          echo "✅ 단위 테스트: $(tail -1 "$OUT/unittest.log")" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 3a. WKWebView 진단 (pywebview 자체 · 요청 기록 · CSP eval)
+        continue-on-error: true
+        timeout-minutes: 4
+        env:
+          PYWEBVIEW_LOG: debug
+        run: |
+          for hid in 1 0; do
+            echo "::group::plain html hidden=$hid"
+            SMOKE_PLAIN=1 SMOKE_HIDDEN=$hid .venv-mac/bin/python tools/smoke_webview.py 2>&1 | tee "$OUT/diag-plain-hidden$hid.log" || true
+            echo "::endgroup::"
+          done
+          for ev in 1 0; do
+            echo "::group::main allow_eval=$ev hidden=0"
+            SMOKE_ALLOW_EVAL=$ev SMOKE_HIDDEN=0 SMOKE_SHOT="$OUT/diag-eval$ev.png" .venv-mac/bin/python tools/smoke_webview.py main.html 2>&1 | tee "$OUT/diag-eval$ev.log" || true
+            echo "::endgroup::"
+          done
+
+      - name: 3. WKWebView 스모크 (가짜 데이터)
+        timeout-minutes: 3
+        run: |
+          for page in main.html insights.html; do
+            .venv-mac/bin/python tools/smoke_webview.py "$page" | tee "$OUT/smoke-$page.json"
+            echo "✅ 스모크 $page: \`$(cat "$OUT/smoke-$page.json")\`" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: 4. 계정 추가 로그인을 터미널 앱 없이 pty 로 실행 (한글·따옴표 폴더)
+        run: |
+          .venv-mac/bin/python - <<'EOF'
+          import os, sys, tempfile
+          from pathlib import Path
+          from unittest import mock
+          home = Path(tempfile.mkdtemp())
+          os.environ["HOME"] = str(home)
+          sys.path.insert(0, ".")
+          import widget
+          folder = home / '.codex-회사 "a"'
+          login = widget.provider_meta.CODEX.LOGIN
+          with mock.patch.object(widget.subprocess, "Popen") as popen:
+              widget.launch_login(widget.provider_meta.CODEX, folder)
+          args, kw = popen.call_args
+          print(args[0], kw["env"][login["env"]])
+          # AppleScript·Terminal 을 거치지 않고 CLI 를 바로 실행하고, 폴더는 환경변수로만 넘긴다
+          assert "osascript" not in args[0][0] and args[0][1:] == login["cmd"][1:], args
+          assert kw["env"][login["env"]] == str(folder) and kw["start_new_session"], kw
+          EOF
+          echo "✅ 로그인 실행 (pty, 한글 폴더)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 5. 소스 실행 → 화면 캡처 → 두 번째 실행으로 끄기
+        run: |
+          FAKE="$(mktemp -d)"
+          HOME="$FAKE" .venv-mac/bin/python widget.py > "$OUT/run-source.log" 2>&1 &
+          PID=$!
+          sleep 20
+          kill -0 $PID || { echo "❌ 소스 실행: 20초 안에 종료됨" >> "$GITHUB_STEP_SUMMARY"; cat "$OUT/run-source.log"; exit 1; }
+          screencapture -x "$OUT/source-run.png" || echo "screencapture 실패(권한)"
+          ps -o pid,command -ax | grep -E "widget.py|provider-worker" | grep -v grep | tee "$OUT/source-procs.txt"
+          ls -la "$FAKE/Library/Application Support/QuotaTank" | tee "$OUT/source-appdir.txt"
+          HOME="$FAKE" .venv-mac/bin/python widget.py  # 이미 떠 있으면 종료 신호(유닉스 소켓)를 보내고 나간다
+          for i in $(seq 1 20); do kill -0 $PID 2>/dev/null || break; sleep 0.5; done
+          if kill -0 $PID 2>/dev/null; then
+            echo "❌ 소스 실행: 두 번째 실행으로 꺼지지 않음" >> "$GITHUB_STEP_SUMMARY"; kill $PID; exit 1
+          fi
+          cat "$OUT/run-source.log"
+          echo "✅ 소스 실행: 20초 유지, 브로커 $(grep -c provider-worker "$OUT/source-procs.txt")개, 두 번째 실행으로 종료" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 6. PyInstaller .app 빌드·실행
+        run: |
+          .venv-mac/bin/python -m pip install pyinstaller==6.22.3 > /dev/null
+          .venv-mac/bin/pyinstaller widget.spec --noconfirm > "$OUT/pyinstaller.log" 2>&1 || { tail -40 "$OUT/pyinstaller.log"; exit 1; }
+          BIN="dist/QuotaTank.app/Contents/MacOS/QuotaTank"
+          test -x "$BIN"
+          /usr/libexec/PlistBuddy -c "Print :LSUIElement" "dist/QuotaTank.app/Contents/Info.plist"
+          FAKE="$(mktemp -d)"
+          HOME="$FAKE" "$BIN" > "$OUT/run-app.log" 2>&1 &
+          PID=$!
+          sleep 25
+          kill -0 $PID || { echo "❌ .app 실행: 25초 안에 종료됨" >> "$GITHUB_STEP_SUMMARY"; cat "$OUT/run-app.log"; exit 1; }
+          screencapture -x "$OUT/app-run.png" || echo "screencapture 실패(권한)"
+          ps -o pid,command -ax | grep -E "QuotaTank" | grep -v grep | tee "$OUT/app-procs.txt"
+          HOME="$FAKE" "$BIN"
+          for i in $(seq 1 20); do kill -0 $PID 2>/dev/null || break; sleep 0.5; done
+          if kill -0 $PID 2>/dev/null; then
+            echo "❌ .app: 두 번째 실행으로 꺼지지 않음" >> "$GITHUB_STEP_SUMMARY"; kill $PID; exit 1
+          fi
+          cat "$OUT/run-app.log"
+          echo "✅ .app: 25초 유지, 브로커 $(grep -c provider-worker "$OUT/app-procs.txt")개, 두 번째 실행으로 종료" >> "$GITHUB_STEP_SUMMARY"
+
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: mac-check
+          path: mac-check/
+          if-no-files-found: warn

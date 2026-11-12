@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>AI 사용 인사이트</title>
+<link rel="stylesheet" href="common.css?v=5">
+<style>
+/* 자세히 보기 창과 같은 크기(가로 300px)에 탭 두 장. 위젯과 같은 무채색 묶음(테두리 없는 둥근 카드)·히트맵 */
+html, body { background: var(--bg); overflow: hidden; }
+#wrap { width: 300px; height: 560px; padding: 10px; display: grid; grid-template-rows: auto auto 1fr; gap: 8px; }
+.top { display: grid; gap: 2px; padding: 0 4px; cursor: default; }
+.bar { display: flex; align-items: center; gap: 8px; }
+.logo { width: 16px; height: 16px; flex: none; }
+h1 { font-size: 15px; margin: 0; font-weight: 600; }
+/* 맥 신호등 버튼: 닫기 = Claude 색, 내리기 = Codex 색. 묶음에 마우스를 올리면 × − 가 보인다 */
+.lights { display: flex; gap: 8px; margin-right: 4px; }
+.lt { all: unset; width: 12px; height: 12px; border-radius: 50%; display: grid; place-items: center; background: var(--c); box-shadow: inset 0 0 0 .5px #0000002e; }
+.lt.close { --c: var(--claude); } .lt.min { --c: var(--gpt); }
+.lt svg { width: 8px; height: 8px; stroke: #000000a6; stroke-width: 1.6; stroke-linecap: round; opacity: 0; }
+.lights:hover .lt svg, .lt:focus-visible svg { opacity: 1; }
+.lt:active { filter: brightness(.82); }
+.lt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.top .sub { font-size: 10.5px; }
+.top .sub > span { white-space: nowrap; }
+.tabs { display: flex; padding: 2px; gap: 2px; border-radius: 7px; background: var(--track); }
+.tabs button { all: unset; flex: 1; text-align: center; padding: 4px 0; border-radius: 5px; font-size: 12px; color: var(--muted); cursor: default; }
+.tabs button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tabs button[aria-selected="true"] { background: var(--subtle); color: var(--fg); font-weight: 600; box-shadow: 0 1px 2px #0003; }
+.pages { overflow: hidden; min-height: 0; }
+.track { display: flex; height: 100%; transition: transform .38s cubic-bezier(.2,1,.3,1); }
+.page { flex: 0 0 100%; min-width: 0; overflow-y: auto; scrollbar-width: thin; display: grid; grid-auto-rows: max-content; gap: 8px; align-content: start; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border-radius: 12px; overflow: hidden; }
+.stat { display: grid; gap: 2px; align-content: start; padding: 9px 12px; min-width: 0; background: var(--subtle); }
+.stat .tk { font-size: 18px; font-weight: 600; }
+.split { font-size: 11px; }
+.box { background: var(--subtle); border-radius: 12px; overflow: hidden; }
+.box-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 9px 12px 4px; font-size: 12px; font-weight: 600; }
+.box-b { display: grid; gap: 8px; padding: 6px 12px 12px; }
+.hm { display: grid; grid-template-columns: 14px repeat(24, minmax(0, 1fr)); gap: 2px; }
+.hm .rl { font-size: 9.5px; color: var(--muted); line-height: 1; align-self: center; }
+.hm .c { aspect-ratio: 1; border-radius: 2px; background: var(--h0); outline: 1px solid #1b1f2410; outline-offset: -1px; animation: wave .5s cubic-bezier(.2,1.2,.3,1) both; animation-delay: var(--d); }
+.hm .c:hover, .hm .c:focus-visible { outline: 1.5px solid var(--fg); outline-offset: 0; }
+@keyframes wave { from { transform: scale(.4); opacity: .3; } }
+.hmx { display: grid; grid-template-columns: 14px repeat(4, 1fr); font-size: 10px; color: var(--muted); }
+.legend { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 400; color: var(--muted); }
+.legend .grad { width: 36px; height: 8px; border-radius: 99px; background: linear-gradient(90deg in oklch, var(--claude), var(--gpt)); }
+.legend .cl, .legend .cx { font-size: 11px; }
+.readout { font-size: 11px; color: var(--muted); min-height: 1.5em; }
+.hist { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; align-items: end; height: 90px; }
+.hist .g { display: flex; gap: 1px; align-items: end; height: 100%; }
+.hist i { flex: 1; border-radius: 2px 2px 0 0; background: var(--brand); height: var(--h); min-height: 2px; transform-origin: bottom; animation: grow .7s cubic-bezier(.2,1.25,.35,1) both; animation-delay: var(--d); }
+@keyframes grow { from { transform: scaleY(.1); } }
+.histx { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+.tip { font-size: 12px; padding: 9px 12px; border-radius: 12px; background: var(--subtle); }
+.tip b { font-weight: 600; }
+.tip.warn { color: var(--crit); background: var(--crit-bg); }
+/* 비용 탭: 날짜별 누적 막대(Claude 아래, Codex 위), 모델별 표 */
+.cbars { display: grid; grid-template-columns: repeat(var(--n, 14), 1fr); gap: 2px; align-items: end; height: 96px; }
+.cbars .col { display: flex; flex-direction: column-reverse; gap: 2px; height: 100%; justify-content: flex-start; cursor: default; }
+.cbars .col:hover i, .cbars .col:focus-visible i { filter: brightness(1.15); }
+.cbars .col:focus-visible { outline: 1.5px solid var(--fg); outline-offset: 1px; border-radius: 2px; }
+.cbars i { display: block; background: var(--brand); height: var(--h); min-height: 0; border-radius: 0; }
+.cbars i.top { border-radius: 4px 4px 0 0; }
+.cbarsx { display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); }
+.mt { width: 100%; border-collapse: collapse; font-size: 11px; }
+.mt td { padding: 3px 0; border-top: 1px solid var(--line); }
+.mt tr:first-child td { border-top: 0; }
+.mt td:nth-child(2), .mt td:nth-child(3) { text-align: right; font-variant-numeric: tabular-nums; }
+.mt td:nth-child(3) { width: 64px; color: var(--fg); font-weight: 600; }
+.mt td:nth-child(2) { color: var(--muted); }
+.mt .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--brand); margin-right: 5px; vertical-align: 0; }
+.note { font-size: 10.5px; color: var(--muted); line-height: 1.5; margin: 0; }
+.empty { padding: 24px 12px; text-align: center; font-size: 12px; color: var(--muted); background: var(--subtle); border-radius: 12px; }
+.shw { display: grid; grid-template-columns: 70px 1fr auto; align-items: center; gap: 8px; font-size: 11px; padding: 2px 0; }
+.shw .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+.shw .bar { position: relative; height: 6px; border-radius: 99px; background: var(--track); }
+.shw .bar i { position: absolute; top: 0; bottom: 0; border-radius: inherit; }
+.shw .bar .mi { left: 0; background: var(--mine); }
+.shw .bar .ot { background: var(--muted); }
+.shw .v { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div class="top pywebview-drag-region">
+    <div class="bar">
+      <span class="lights">
+        <button class="lt close" id="b-close" aria-label="닫기" title="닫기"><svg viewBox="0 0 8 8"><path d="M2 2l4 4M6 2L2 6"/></svg></button>
+        <button class="lt min" id="b-min" aria-label="내리기" title="내리기"><svg viewBox="0 0 8 8"><path d="M1.5 4h5"/></svg></button>
+      </span><img class="logo" src="icon.ico" alt=""><h1>사용 인사이트</h1></div>
+    <span class="sub num" id="meta">불러오는 중…</span></div>
+  <div class="tabs" role="tablist" aria-label="인사이트">
+    <button role="tab" id="t0" aria-controls="p0" aria-selected="true">패턴</button>
+    <button role="tab" id="t1" aria-controls="p1" aria-selected="false" tabindex="-1">사용률</button>
+    <button role="tab" id="t2" aria-controls="p2" aria-selected="false" tabindex="-1">비용</button>
+  </div>
+  <div class="pages"><div class="track" id="track">
+    <section class="page" id="p0" role="tabpanel" aria-labelledby="t0"><div class="empty">기록을 불러오는 중…</div></section>
+    <section class="page" id="p1" role="tabpanel" aria-labelledby="t1" inert></section>
+    <section class="page" id="p2" role="tabpanel" aria-labelledby="t2" inert><div class="empty">토큰 기록을 집계하는 중…</div></section>
+  </div></div>
+</div>
+<script src="common.js?v=5"></script>
+<script>
+(() => {
+const DAYS = '월화수목금토일', p0 = $('#p0'), p1 = $('#p1'), p2 = $('#p2');
+const tri = (a, b, c, f = x => x) => `<span class="cl">${a == null ? '—' : f(a)}</span> · <span class="cx">${b == null ? '—' : f(b)}</span> · <span class="gm">${c == null ? '—' : f(c)}</span>`;
+
+// ── 탭: 클릭, ←/→ 키, 트랙패드 가로 스와이프 ──
+const tabs = [$('#t0'), $('#t1'), $('#t2')], pages = [p0, p1, p2];
+let cur = 0;
+function go(i) {
+  cur = clamp(i, 0, tabs.length - 1);
+  $('#track').style.transform = `translateX(${-cur * 100}%)`;
+  tabs.forEach((t, j) => { t.setAttribute('aria-selected', String(j === cur)); t.tabIndex = j === cur ? 0 : -1; });
+  pages.forEach((p, j) => p.toggleAttribute('inert', j !== cur));
+}
+tabs.forEach((t, i) => t.addEventListener('click', () => go(i)));
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') { go(cur + (e.key === 'ArrowRight' ? 1 : -1)); tabs[cur].focus(); }
+});
+let swipe = 0, swipeLock = 0;
+$('.pages').addEventListener('wheel', e => {
+  if (Math.abs(e.deltaX) <= Math.abs(e.deltaY) || Date.now() < swipeLock) return;
+  swipe += e.deltaX;
+  if (Math.abs(swipe) > 40) { go(cur + Math.sign(swipe)); swipe = 0; swipeLock = Date.now() + 500; }
+}, { passive: true });
+
+function renderEmpty(D) {
+  $('#meta').textContent = `최근 ${D.days}일`;
+  p0.innerHTML = `<div class="empty">아직 기록된 5시간 사이클이 없어요.<br>위젯을 켜 두고 며칠 쓰면 시간대별 패턴이 여기에 나타나요.</div>`;
+  p1.innerHTML = `<div class="empty">사이클이 쌓이면 최고 사용률 분포와 팁이 보여요.</div>`;
+}
+
+function render(D) {
+  const A = D.svc.claude || {n:0,hits:0,peaks:[],heat:new Array(168).fill(0)},
+        G = D.svc.gpt || {n:0,hits:0,peaks:[],heat:new Array(168).fill(0)},
+        M = D.svc.gemini || {n:0,hits:0,peaks:[],heat:new Array(168).fill(0)};
+  if (!A.n && !G.n && !M.n) return renderEmpty(D);
+  $('#meta').innerHTML = `<span><span class="cl">Claude</span> + <span class="cx">Codex</span> + <span class="gm">Gemini</span></span> · <span>최근 ${D.days}일</span> · <span>${D.samples.toLocaleString()}개 샘플</span>`
+    + (D.estimated ? ` · <span title="Claude는 사용률 기록이 없어 Claude Code 대화 시각으로 사이클을 추정했어요. 사용률은 한도 도달(100%)만 알아요.">Claude ${D.estimated}회 추정</span>` : '');
+
+  // ── 1쪽: 패턴 ──
+  p0.innerHTML = `
+  <div class="stats">
+    <div class="stat"><span class="i-n"></span><span class="sub">사이클 합계</span><span class="split num">${tri(A.n, G.n, M.n)}</span></div>
+    <div class="stat"><span class="i-h"></span><span class="sub">한도 도달</span><span class="split num">${tri(A.hits, G.hits, M.hits)}</span></div>
+    <div class="stat"><span class="i-o"></span><span class="sub">두 창 이상 겹친 시간</span></div>
+    <div class="stat"><span class="i-f"></span><span class="sub">보통 첫 시작</span><span class="split num">${tri(A.first, G.first, M.first, hhmm)}</span></div>
+  </div>
+  <div class="box"><div class="box-h">사이클 시작 시각<span class="legend"><span class="cl">Claude</span> · <span class="cx">Codex</span> · <span class="gm">Gemini</span></span></div><div class="box-b"><div class="hm" id="hm"></div>
+    <div class="hmx"><span></span><span>0시</span><span>6시</span><span>12시</span><span>18시</span></div>
+    <div class="readout" id="readout">진할수록 많이 시작했어요. 칸에 마우스를 올리면 횟수가 보여요.</div></div></div>`;
+
+  new Ticker($('.i-n')).set((A.n + G.n + M.n) + '회');
+  new Ticker($('.i-h')).set((A.hits + G.hits + M.hits) + '회');
+  new Ticker($('.i-o')).set(D.overlap_pct == null ? '—' : Math.round(D.overlap_pct) + '%');
+  const firsts = [A.first, G.first, M.first].filter(x => x != null);
+  new Ticker($('.i-f')).set(firsts.length ? hhmm(Math.min(...firsts)) : '—');
+
+  // 히트맵: 색 = 활동 빈도 높은 서비스 색, 진하기 = 합계
+  const hmHost = $('#hm'), maxTot = Math.max(1, ...A.heat.map((a, i) => a + G.heat[i] + M.heat[i]));
+  let html = '';
+  for (let d = 0; d < 7; d++) {
+    html += `<span class="rl">${DAYS[d]}</span>`;
+    for (let h = 0; h < 24; h++) {
+      const a = A.heat[d * 24 + h], g = G.heat[d * 24 + h], m = M.heat[d * 24 + h], tot = a + g + m;
+      const lv = tot ? Math.min(4, Math.ceil(tot / maxTot * 4)) : 0;
+      const mix = !tot ? 'var(--h0)' : a >= g && a >= m ? 'var(--claude)' : g >= m ? 'var(--gpt)' : 'var(--gemini)';
+      const bg = lv ? `color-mix(in srgb, ${mix} ${[0, 35, 58, 80, 100][lv]}%, var(--h0))` : 'var(--h0)';
+      html += `<span class="c" tabindex="0" style="background:${bg};--d:${(d + h) * 12}ms" data-d="${d}" data-h="${h}" data-a="${a}" data-g="${g}" data-m="${m}" aria-label="${DAYS[d]}요일 ${h}시 Claude ${a}회 Codex ${g}회 Gemini ${m}회"></span>`;
+    }
+  }
+  hmHost.innerHTML = html;
+  const readout = $('#readout');
+  const onCell = e => {
+    const c = e.target.closest('.c');
+    if (!c) return;
+    readout.innerHTML = `${DAYS[c.dataset.d]}요일 ${c.dataset.h}시 시작 · <span class="cl">${c.dataset.a}회</span> · <span class="cx">${c.dataset.g}회</span> · <span class="gm">${c.dataset.m}회</span>`;
+  };
+  hmHost.addEventListener('mouseover', onCell); hmHost.addEventListener('focusin', onCell);
+
+  // ── 2쪽: 사용률 ──
+  p1.innerHTML = `
+  <div class="box"><div class="box-h">사이클별 최고 사용률<span class="legend"><span class="cl">Claude</span> · <span class="cx">Codex</span> · <span class="gm">Gemini</span></span></div><div class="box-b"><div class="hist" id="hist"></div><div class="histx"><span>0%</span><span>50%</span><span>100%</span></div></div></div>
+  <div id="tips" style="display:grid;gap:8px"></div>`;
+
+  const bins = P => { const b = Array(10).fill(0); P.forEach(p => b[Math.min(9, Math.floor(p / 10))]++); return b; };
+  const bA = bins(A.peaks), bG = bins(G.peaks), bM = bins(M.peaks), mx = Math.max(1, ...bA, ...bG, ...bM);
+  $('#hist').innerHTML = bA.map((_, i) => `<div class="g" title="${i * 10}~${i * 10 + 10}% · Claude ${bA[i]} · Codex ${bG[i]} · Gemini ${bM[i]}"><i style="--brand:var(--claude);--h:${bA[i] / mx * 100}%;--d:${i * 40}ms"></i><i style="--brand:var(--gpt);--h:${bG[i] / mx * 100}%;--d:${i * 40 + 15}ms"></i><i style="--brand:var(--gemini);--h:${bM[i] / mx * 100}%;--d:${i * 40 + 30}ms"></i></div>`).join('');
+
+  const tips = [];
+  const hits = A.hits + G.hits + M.hits;
+  // 넘기기 판단은 한도에 닿은 순간 다른 쪽 사용률 기록이 있을 때만
+  if (D.handoff_n) tips.push(D.handoff_ok
+    ? `<b>한도에 닿았을 때 ${D.handoff_n}번 중 ${D.handoff_ok}번은 다른 쪽에 절반 넘게 여유가 있었어요.</b> 막히면 기다리지 말고 바로 넘기세요.`
+    : `<b>한도에 닿았을 때 다른 쪽도 빠듯했어요 (${D.handoff_n}번 확인).</b> 무거운 작업은 사이클 초반에 몰아 두세요.`);
+  else if (hits) tips.push(`<b>최근 ${D.days}일 동안 한도에 ${hits}번 닿았어요.</b> 무거운 작업은 사이클 초반에 몰아 두세요.`);
+  if (firsts.length) {
+    const minF = Math.min(...firsts);
+    const k = A.first === minF ? 'cl' : G.first === minF ? 'cx' : 'gm';
+    const pre = ((minF - 150) % 1440 + 1440) % 1440;
+    tips.push(`5시간 창은 첫 메시지부터 시작돼요. 평소 시작(<span class="${k}">${hhmm(minF)}</span>)보다 이른 <span class="${k}">${hhmm(pre)}</span>에 짧은 인사를 보내 두면 작업 도중 리셋이 한 번 더 와요.`);
+  }
+  for (const [k, cls] of [['claude', 'cl'], ['gpt', 'cx'], ['gemini', 'gm']]) {
+    const w = D.weekly[k];
+    if (!w || w.elapsed_days < 1) continue;
+    if (w.proj > 100) tips.push({ warn: true, html: `<span class="${cls}">이번 주 속도면 주간 한도가 모자라요 (예상 ${w.proj.toFixed(0)}%).</span> 남은 기간 하루 ${w.budget.toFixed(0)}% 안쪽으로 조절하세요.` });
+    else if (w.proj < 60) tips.push(`<span class="${cls}">주간 한도가 넉넉해요 (예상 ${w.proj.toFixed(0)}%).</span> 더 적극적으로 써도 돼요.`);
+  }
+  $('#tips').innerHTML = tips.map(t => typeof t === 'string' ? `<div class="tip">${t}</div>` : `<div class="tip warn">${t.html}</div>`).join('');
+}
+
+// ── 2쪽 아래: Claude 5시간 창별 내 몫·다른 곳 (공유 사용량 나눠 보기를 켰을 때) ──
+const SHARE_SRC = { base: '기본 추정', learned: '혼자 쓸 때 학습', manual: '직접 맞춤', converted: '다른 요금제 값 환산' };
+const SHARE_PLAN = { pro: 'Pro', max5: 'Max 5배', max20: 'Max 20배' };
+function renderShare(S) {
+  let box = $('#shbox');
+  if (!S) { if (box) box.remove(); return; }
+  if (!box) { box = document.createElement('div'); box.id = 'shbox'; p1.append(box); }
+  const pt = n => n >= 1 ? String(Math.round(n)) : n > 0 ? '<1' : '0';
+  const rows = S.windows.map(w => {
+    const d = new Date(w.reset * 1000), at = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const mine = clamp(w.mine, 0, 100), oth = clamp(w.others, 0, 100 - mine);
+    return `<div class="shw" title="${at} 리셋 · 이 PC 에서 약 ${w.m.toFixed(1)}달러(API 환산)"><span class="when">${at}</span>
+      <div class="bar"><i class="mi" style="width:${mine}%"></i><i class="ot" style="left:${mine}%;width:${oth}%"></i></div>
+      <span class="v">나 ${pt(w.mine)}% · 다른 곳 ${pt(w.others)}%</span></div>`;
+  }).join('');
+  box.innerHTML = `<div class="box"><div class="box-h">Claude 5시간 창별 나누기<span class="legend"><span class="cl">나</span> · <span style="color:var(--muted)">다른 곳</span></span></div>
+    <div class="box-b">${rows || '<div class="empty">아직 기록된 5시간 창이 없어요.</div>'}
+    <p class="note">이 PC 의 Claude Code 기록으로 나눈 추정치예요(${SHARE_SRC[S.src] || ''} · ${SHARE_PLAN[S.plan] || ''}). 다른 기기·웹에서 쓴 양은 '다른 곳'에 들어가요.</p></div></div>`;
+}
+
+// ── 3쪽: 비용 (로컬 기록의 토큰 × API 단가 환산) ──
+const money = v => v >= 100 ? `$${Math.round(v).toLocaleString()}` : `$${v.toFixed(v >= 10 ? 1 : 2)}`;
+const tokens = n => n >= 1e9 ? (n / 1e9).toFixed(2) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? Math.round(n / 1e3) + 'K' : String(n);
+const md = d => { const [, m, dd] = d.split('-'); return `${+m}/${+dd}`; };
+// 실제 API 크레딧 사용(관리자 키로 받은 비용 보고서의 날짜별 금액). 키가 없거나 아직 못 받았으면 그리지 않는다
+function apiBox(K) {
+  if (!K || K.spent == null || !Array.isArray(K.daily)) return '';
+  const days = K.daily.slice(-31), mx = Math.max(0.01, ...days.map(x => x[1]));
+  const rest = Math.max(0, K.amount - K.spent);
+  return `<div class="box" id="apibox"><div class="box-h">API 크레딧 날짜별 사용<span class="legend num">${money(K.spent)} / $${K.amount} · 남은 ${money(rest)}</span></div><div class="box-b">
+    ${days.length ? `<div class="cbars" id="abars" style="--n:${days.length};gap:1px" role="img" aria-label="이번 결제 주기 날짜별 API 사용 금액">${days.map(([d, v], i) =>
+      `<div class="col" tabindex="0" data-i="${i}" aria-label="${md(d)} ${money(v)}">${v > 0 ? `<i class="top" style="--brand:var(--claude);--h:${v / mx * 100}%"></i>` : ''}</div>`).join('')}</div>
+    <div class="cbarsx"><span>${md(days[0][0])}</span><span>${md(days[days.length - 1][0])}</span></div>
+    <div class="readout" id="areadout">막대에 마우스를 올리면 그날 쓴 금액이 보여요.</div>` : '<div class="empty">이번 주기에 쓴 API 금액이 아직 없어요.</div>'}
+    <p class="note">Claude Console 비용 보고서의 실제 사용 금액이에요. 날짜는 UTC 기준이라 한국 시각으로는 그날 오전 9시부터 다음 날 오전 9시까지예요.</p></div></div>`;
+}
+function bindApi(K) {
+  const bars = $('#abars', p2); if (!bars) return;
+  const days = K.daily.slice(-31), ro = $('#areadout', p2), on = e => {
+    const c = e.target.closest('.col'); if (!c) return;
+    const [d, v] = days[+c.dataset.i];
+    ro.textContent = `${md(d)}(UTC) · ${money(v)}`;
+  };
+  bars.addEventListener('mouseover', on); bars.addEventListener('focusin', on);
+}
+function renderCost(C, K) {
+  const api = apiBox(K);
+  if (!C) { p2.innerHTML = api + `<div class="empty">토큰 기록을 집계하는 중…<br>처음 한 번은 몇십 초 걸릴 수 있어요.</div>`; bindApi(K); return; }
+  const A = C.svc.claude, G = C.svc.gpt;
+  if (!A.tokens && !G.tokens) { p2.innerHTML = api + `<div class="empty">최근 ${C.dates.length}일 동안 Claude Code·Codex 토큰 기록이 없어요.</div>`; bindApi(K); return; }
+  const n = Math.min(14, C.dates.length), dates = C.dates.slice(-n), a = A.daily.slice(-n), g = G.daily.slice(-n);
+  const mx = Math.max(0.01, ...a.map((v, i) => v + g[i]));
+  p2.innerHTML = api + `
+  <div class="stats">
+    <div class="stat"><span class="c-a"></span><span class="sub"><span class="cl">Claude</span> ${C.dates.length}일</span><span class="split num sub">${tokens(A.tokens)} 토큰</span></div>
+    <div class="stat"><span class="c-g"></span><span class="sub"><span class="cx">Codex</span> ${C.dates.length}일</span><span class="split num sub">${tokens(G.tokens)} 토큰</span></div>
+  </div>
+  <div class="box"><div class="box-h">날짜별 환산 금액<span class="legend"><span class="cl">Claude</span> · <span class="cx">Codex</span></span></div><div class="box-b">
+    <div class="cbars" id="cbars" role="img" aria-label="최근 ${n}일 날짜별 API 환산 금액">${dates.map((d, i) => {
+      const segs = [['claude', a[i]], ['gpt', g[i]]].filter(x => x[1] > 0);
+      return `<div class="col" tabindex="0" data-i="${i}" aria-label="${md(d)} Claude ${money(a[i])} Codex ${money(g[i])}">${segs.map(([k, v], j) =>
+        `<i class="${j === segs.length - 1 ? 'top' : ''}" style="--brand:var(--${k});--h:${v / mx * 100}%"></i>`).join('')}</div>`; }).join('')}</div>
+    <div class="cbarsx"><span>${md(dates[0])}</span><span>${md(dates[n - 1])}</span></div>
+    <div class="readout" id="creadout">막대에 마우스를 올리면 그날 금액이 보여요.</div></div></div>
+  <div class="box"><div class="box-h">모델별<span class="legend">토큰 · 환산</span></div><div class="box-b">
+    <table class="mt">${[...A.models.map(m => ['claude', m]), ...G.models.map(m => ['gpt', m])].sort((x, y) => y[1].cost - x[1].cost || y[1].tokens - x[1].tokens).map(([k, m]) =>
+      `<tr><td><span class="dot" style="--brand:var(--${k})"></span>${escapeHtml(m.model)}</td><td>${tokens(m.tokens)}</td><td>${m.known ? money(m.cost) : '<span class="sub" title="단가를 몰라 금액에서 뺐어요">단가 미확인</span>'}</td></tr>`).join('')}</table></div></div>
+  <p class="note">로컬 기록을 Standard API 단가(${escapeHtml(C.pricing_date || '확인일 미상')})로 환산한 추정치예요. 구독 요금과 별개이고 실제로 청구되지 않아요. Codex는 기록된 요청의 입력이 272K를 넘으면 긴 컨텍스트 단가를 적용해요. Fast·Ultrafast, 지역 할증·도구 호출 요금은 포함하지 않아요.${A.unpriced + G.unpriced ? ` 단가를 모르는 모델(${tokens(A.unpriced + G.unpriced)} 토큰)은 금액에서 뺐어요.` : ''} 단가는 config.json 의 "prices" 로 바꿀 수 있어요.</p>`;
+  new Ticker($('.c-a', p2)).set(money(A.total));
+  new Ticker($('.c-g', p2)).set(money(G.total));
+  const ro = $('#creadout', p2), onCol = e => {
+    const c = e.target.closest('.col'); if (!c) return;
+    const i = +c.dataset.i, d = new Date(dates[i] + 'T00:00:00');
+    ro.innerHTML = `${md(dates[i])}(${'일월화수목금토'[d.getDay()]}) · <span class="cl">${money(a[i])}</span> · <span class="cx">${money(g[i])}</span> · 합계 ${money(a[i] + g[i])}`;
+  };
+  $('#cbars', p2).addEventListener('mouseover', onCol); $('#cbars', p2).addEventListener('focusin', onCol);
+  bindApi(K);
+}
+
+// ── 창 크기: 자세히 보기와 같게. 제목 표시줄이 없어 창 크기 = 내용 크기 ──
+let want = null, tries = 0;
+async function size(api) {
+  if (!want) {
+    const ds = await api.detail_size().catch(() => null);
+    want = [ds ? ds[0] : 300, Math.max(420, ds ? ds[1] : 560)];
+    const wrap = $('#wrap'); wrap.style.width = want[0] + 'px'; wrap.style.height = want[1] + 'px';
+  }
+  // 창이 막 뜬 직후엔 크기가 흔들려서, 어긋나 있으면 조금 뒤 다시 본다
+  if ((Math.abs(want[0] - innerWidth) > 1 || Math.abs(want[1] - innerHeight) > 1) && tries++ < 4) {
+    api.fit_insights(want[0], want[1]); setTimeout(() => size(api), 400);
+  }
+}
+
+let lastKey = '', lastCost = null;
+async function load(api) {
+  try {
+    const D = await api.insights();
+    if (!D || !D.svc) throw new Error('받은 데이터에 svc 가 없음: ' + JSON.stringify(D).slice(0, 120));
+    const key = JSON.stringify([D.samples, D.estimated]);
+    if (key !== lastKey) { lastKey = key; render(D); }
+    renderShare(D.share);
+    const K = D.api_credit && { amount: D.api_credit.amount, spent: D.api_credit.spent, daily: D.api_credit.daily };
+    const ckey = JSON.stringify([D.cost, K]);
+    if (ckey !== lastCost) { lastCost = ckey; renderCost(D.cost, K); }
+  } catch (e) {
+    // 어디서 났는지 보이게 스택 첫 위치까지 적는다
+    const at = (String(e.stack || '').split('\n').find(l => /insights\.html|common\.js/.test(l)) || '').trim();
+    p0.innerHTML = `<div class="empty" style="user-select:text">인사이트를 계산하지 못했어요.<br>${escapeHtml(String(e).slice(0, 160))}<br><span class="sub">${escapeHtml(at.slice(0, 120))}</span></div>`;
+  }
+}
+waitApi().then(api => {
+  // 제목 표시줄 버튼. 누를 때 창 끌기가 시작되지 않게 mousedown 을 막는다
+  for (const b of [$('#b-min'), $('#b-close')]) b.addEventListener('mousedown', e => e.stopPropagation());
+  $('#b-min').addEventListener('click', () => api.ins_minimize());
+  $('#b-close').addEventListener('click', () => api.ins_close());
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') api.ins_close(); });
+  size(api); addEventListener('resize', () => size(api));
+  load(api); setInterval(() => load(api), 60000);
+  setTimeout(() => load(api), 8000);  // 처음 비용 집계가 끝날 즈음 한 번 더
+  const theme = () => api.theme().then(applyTheme).catch(() => {});
+  theme(); setInterval(theme, 1000);
+});
+})();
+</script>
+</body>
+</html>
