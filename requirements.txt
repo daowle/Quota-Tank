@@ -1,4 +1,4 @@
 # 화면(WebView2/WKWebView), 알림 영역·메뉴 막대 아이콘, 아이콘 그리기
 pywebview==6.2.1
 pystray==0.19.5
-pillow==12.3.0
+pillow==13.0.0
