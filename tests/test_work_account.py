@@ -115,7 +115,7 @@ class SwitchTest(unittest.TestCase):
     def test_interrupted_switch_is_finished_from_the_journal(self):
         folder = self.home / ".claude-work"
         with mock.patch.object(common, "finish_swap"):  # 일지만 남기고 끊겼다
-            claude.swap(folder, parked=True)
+            claude.swap(folder.resolve(), parked=True)  # 실제 전환은 늘 실제 경로(resolve)로 한다
         self.assertEqual(self.creds(".claude")["claudeAiOauth"]["accessToken"], "main")
         self.assertEqual(Path(self.ask("active", "claude")["ok"]).parent, folder.resolve())
         self.assertEqual(self.creds(".claude")["claudeAiOauth"]["accessToken"], "work")

@@ -39,7 +39,7 @@ body:not(.menu) #menu, body:not(.menu) #scrim { display: none; }
 /* ── 계정 관리: 목록(순서·이름·삭제)과 추가(서비스 → 방법). 설명 문장 없이 버튼으로만 ── */
 body.menu #accounts-panel, body.accounts-open #compact, body.accounts-open #detail { display: none; }
 #accounts-panel { width: 300px; max-height: 560px; overflow-y: auto; box-sizing: border-box; padding: 6px 10px 12px; display: grid; gap: 8px; align-content: start; }
-#accounts-panel[hidden], #accounts-panel [hidden], .svc.disabled { display: none; }
+#accounts-panel[hidden], #accounts-panel [hidden], .svc.disabled, .svc[hidden] { display: none; }  /* .svc 의 display: grid 가 hidden 을 이기지 않게 */
 /* 추가 중에는 목록 대신 추가 화면을, 로그인 기다리는 동안에는 대기 화면만 보인다 */
 #accounts-panel.adding #account-list, #accounts-panel.adding #add-open, #accounts-panel.waiting #add-box,
 #accounts-panel.adding #credit-h, #accounts-panel.adding #credit-set { display: none; }
